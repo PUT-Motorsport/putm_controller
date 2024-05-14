@@ -8,7 +8,7 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(putm_pm09_vcl REQUIRED)
+find_package(putm_vcl_interfaces REQUIRED)
 
 # uncomment the following section in order to fill in
 # further dependencies manually.
@@ -18,7 +18,7 @@ add_executable(controller src/controller.cpp)
 target_include_directories(controller PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
-ament_target_dependencies(controller rclcpp putm_pm09_vcl)
+ament_target_dependencies(controller rclcpp putm_vcl_interfaces)
 target_compile_features(controller PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
 install(TARGETS controller

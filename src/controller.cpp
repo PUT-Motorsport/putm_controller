@@ -1,10 +1,10 @@
-#include "putm_pm09_vcl/msg/detail/frontbox__struct.hpp"
-#include "putm_pm09_vcl/msg/frontbox.hpp"
-#include "putm_pm09_vcl/msg/setpoints.hpp"
+#include "putm_vcl_interfaces/msg/detail/frontbox__struct.hpp"
+#include "putm_vcl_interfaces/msg/frontbox.hpp"
+#include "putm_vcl_interfaces/msg/setpoints.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 using namespace std::chrono_literals;
-using namespace putm_pm09_vcl::msg;
+using namespace putm_vcl_interfaces::msg;
 
 using std::placeholders::_1;
 
@@ -18,7 +18,7 @@ private:
   static constexpr int32_t INVERTER_MAX_NEGATIVE_TOURQE = -500;
 
   float pedal_position;
-  bool rtd_state;
+  bool rtd_state = true; // TODO: Implement
 
   struct tourqeModifiers
   {
