@@ -6,6 +6,8 @@
   <description>TODO: Package description</description>
   <maintainer email="Adam_Wasilewski_99@proton.me">putm</maintainer>
   <license>TODO: License declaration</license>
+  
+  <depend>putm_vcl_interfaces</depend>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   
