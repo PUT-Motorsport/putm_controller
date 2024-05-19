@@ -13,13 +13,13 @@ class Controller : public rclcpp::Node {
   Controller();
 
  private:
-  static constexpr int32_t INVERTER_MAX_POSITIVE_TOURQE = 500;
-  static constexpr int32_t INVERTER_MAX_NEGATIVE_TOURQE = -500;
+  static constexpr int32_t INVERTER_MAX_POSITIVE_TORQUE = 500;
+  static constexpr int32_t INVERTER_MAX_NEGATIVE_TORQUE = -500;
 
   float pedal_position;
   bool rtd_state = true;  // TODO: Implement
 
-  struct tourqeModifiers {
+  struct torqueModifiers {
     float front;
     float rear;
   } modifiers;
@@ -41,15 +41,15 @@ Controller::Controller() : Node("controller"), pedal_position(0), modifiers{0.5,
 void Controller::main_loop_callback() {
   /* continue only if we are in rtd */
   if (rtd_state) {
-    auto tourqe_setpoints = Setpoints();
-    int32_t tourqe_front = INVERTER_MAX_POSITIVE_TOURQE * pedal_position * modifiers.front;
-    int32_t tourqe_rear = INVERTER_MAX_POSITIVE_TOURQE * pedal_position * modifiers.rear;
-    tourqe_setpoints.tourqes[0] = tourqe_front;
-    tourqe_setpoints.tourqes[1] = tourqe_front;
-    tourqe_setpoints.tourqes[2] = tourqe_rear;
-    tourqe_setpoints.tourqes[3] = tourqe_rear;
+    auto torque_setpoints = Setpoints();
+    int32_t torque_front = INVERTER_MAX_POSITIVE_TORQUE * pedal_position * modifiers.front;
+    int32_t torque_rear = INVERTER_MAX_POSITIVE_TORQUE * pedal_position * modifiers.rear;
+    torque_setpoints.torques[0] = torque_front;
+    torque_setpoints.torques[1] = torque_front;
+    torque_setpoints.torques[2] = torque_rear;
+    torque_setpoints.torques[3] = torque_rear;
 
-    setpoints_publisher->publish(tourqe_setpoints);
+    setpoints_publisher->publish(torque_setpoints);
   }
 }
 
