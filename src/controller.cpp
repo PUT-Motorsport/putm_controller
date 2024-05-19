@@ -8,20 +8,18 @@ using namespace putm_vcl_interfaces::msg;
 
 using std::placeholders::_1;
 
-class Controller : public rclcpp::Node
-{
-public:
+class Controller : public rclcpp::Node {
+ public:
   Controller();
 
-private:
+ private:
   static constexpr int32_t INVERTER_MAX_POSITIVE_TOURQE = 500;
   static constexpr int32_t INVERTER_MAX_NEGATIVE_TOURQE = -500;
 
   float pedal_position;
-  bool rtd_state = true; // TODO: Implement
+  bool rtd_state = true;  // TODO: Implement
 
-  struct tourqeModifiers
-  {
+  struct tourqeModifiers {
     float front;
     float rear;
   } modifiers;
@@ -34,16 +32,13 @@ private:
   void frontbox_topic_callback(const Frontbox msg);
 };
 
-Controller::Controller() : Node("controller"), pedal_position(0), modifiers{0.5, 0.5}
-{
-  setpoints_publisher = this->create_publisher<Setpoints>("setpoints", 10);
-  frontbox_subscriber = this->create_subscription<Frontbox>(
-    "frontbox", 10, std::bind(&Controller::frontbox_topic_callback, this, _1));
+Controller::Controller() : Node("controller"), pedal_position(0), modifiers{0.5, 0.5} {
+  setpoints_publisher = this->create_publisher<Setpoints>("putm_vcl/setpoints", 1);
+  frontbox_subscriber = this->create_subscription<Frontbox>("putm_vcl/frontbox", 1, std::bind(&Controller::frontbox_topic_callback, this, _1));
   main_loop_timer = this->create_wall_timer(10ms, std::bind(&Controller::main_loop_callback, this));
 }
 
-void Controller::main_loop_callback()
-{
+void Controller::main_loop_callback() {
   /* continue only if we are in rtd */
   if (rtd_state) {
     auto tourqe_setpoints = Setpoints();
@@ -58,13 +53,9 @@ void Controller::main_loop_callback()
   }
 }
 
-void Controller::frontbox_topic_callback(const Frontbox msg)
-{
-  pedal_position = msg.pedal_position;
-}
+void Controller::frontbox_topic_callback(const Frontbox msg) { pedal_position = msg.pedal_position; }
 
-int main(int argc, char ** argv)
-{
+int main(int argc, char** argv) {
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<Controller>());
   rclcpp::shutdown();
