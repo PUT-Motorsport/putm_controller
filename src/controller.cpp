@@ -16,7 +16,6 @@ class Controller : public rclcpp::Node {
   static constexpr int32_t INVERTER_MAX_POSITIVE_TORQUE = 500;
   static constexpr int32_t INVERTER_MAX_NEGATIVE_TORQUE = -500;
 
-  float pedal_position;
   bool rtd_state = true;  // TODO: Implement
 
   struct torqueModifiers {
@@ -24,22 +23,19 @@ class Controller : public rclcpp::Node {
     float rear;
   } modifiers;
 
-  rclcpp::TimerBase::SharedPtr main_loop_timer;
   rclcpp::Subscription<Frontbox>::SharedPtr frontbox_subscriber;
   rclcpp::Publisher<Setpoints>::SharedPtr setpoints_publisher;
 
-  void main_loop_callback();
   void frontbox_topic_callback(const Frontbox msg);
 };
 
-Controller::Controller() : Node("controller"), pedal_position(0), modifiers{0.5, 0.5} {
+Controller::Controller() : Node("controller"), modifiers{0.5, 0.5} {
   setpoints_publisher = this->create_publisher<Setpoints>("putm_vcl/setpoints", 1);
   frontbox_subscriber = this->create_subscription<Frontbox>("putm_vcl/frontbox", 1, std::bind(&Controller::frontbox_topic_callback, this, _1));
-  main_loop_timer = this->create_wall_timer(10ms, std::bind(&Controller::main_loop_callback, this));
 }
 
-void Controller::main_loop_callback() {
-  /* continue only if we are in rtd */
+void Controller::frontbox_topic_callback(const Frontbox msg) {
+  float pedal_position = msg.pedal_position;
   if (rtd_state) {
     auto torque_setpoints = Setpoints();
     int32_t torque_front = INVERTER_MAX_POSITIVE_TORQUE * pedal_position * modifiers.front;
@@ -52,8 +48,6 @@ void Controller::main_loop_callback() {
     setpoints_publisher->publish(torque_setpoints);
   }
 }
-
-void Controller::frontbox_topic_callback(const Frontbox msg) { pedal_position = msg.pedal_position; }
 
 int main(int argc, char** argv) {
   rclcpp::init(argc, argv);
