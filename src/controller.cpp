@@ -1,5 +1,4 @@
-#include "putm_vcl_interfaces/msg/detail/frontbox__struct.hpp"
-#include "putm_vcl_interfaces/msg/frontbox.hpp"
+#include "putm_vcl_interfaces/msg/frontbox_driver_input.hpp"
 #include "putm_vcl_interfaces/msg/setpoints.hpp"
 #include "rclcpp/rclcpp.hpp"
 
@@ -23,18 +22,18 @@ class Controller : public rclcpp::Node {
     float rear;
   } modifiers;
 
-  rclcpp::Subscription<Frontbox>::SharedPtr frontbox_subscriber;
+  rclcpp::Subscription<FrontboxDriverInput>::SharedPtr frontbox_driver_input_subscriber;
   rclcpp::Publisher<Setpoints>::SharedPtr setpoints_publisher;
 
-  void frontbox_topic_callback(const Frontbox msg);
+  void frontbox_driver_input_topic_callback(const FrontboxDriverInput msg);
 };
 
 Controller::Controller() : Node("controller"), modifiers{0.5, 0.5} {
   setpoints_publisher = this->create_publisher<Setpoints>("putm_vcl/setpoints", 1);
-  frontbox_subscriber = this->create_subscription<Frontbox>("putm_vcl/frontbox", 1, std::bind(&Controller::frontbox_topic_callback, this, _1));
+  frontbox_driver_input_subscriber = this->create_subscription<FrontboxDriverInput>("putm_vcl/frontbox_driver_input", 1, std::bind(&Controller::frontbox_driver_input_topic_callback, this, _1));
 }
 
-void Controller::frontbox_topic_callback(const Frontbox msg) {
+void Controller::frontbox_driver_input_topic_callback(const FrontboxDriverInput msg) {
   float pedal_position = msg.pedal_position;
   if (rtd_state) {
     auto torque_setpoints = Setpoints();
@@ -53,5 +52,4 @@ int main(int argc, char** argv) {
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<Controller>());
   rclcpp::shutdown();
-  return 0;
 }
