@@ -34,11 +34,11 @@ Controller::Controller() : Node("controller"), modifiers{0.5, 0.5} {
 }
 
 void Controller::frontbox_driver_input_topic_callback(const FrontboxDriverInput msg) {
-  float pedal_position = msg.pedal_position;
+  float scaled_pedal_position = ((float)(msg.pedal_position) / 500.0) * 100.0;
   if (rtd_state) {
     auto torque_setpoints = Setpoints();
-    int32_t torque_front = INVERTER_MAX_POSITIVE_TORQUE * pedal_position * modifiers.front;
-    int32_t torque_rear = INVERTER_MAX_POSITIVE_TORQUE * pedal_position * modifiers.rear;
+    int32_t torque_front = INVERTER_MAX_POSITIVE_TORQUE * scaled_pedal_position * modifiers.front;
+    int32_t torque_rear = INVERTER_MAX_POSITIVE_TORQUE * scaled_pedal_position * modifiers.rear;
     torque_setpoints.torques[0] = torque_front;
     torque_setpoints.torques[1] = torque_front;
     torque_setpoints.torques[2] = torque_rear;
