@@ -29,6 +29,11 @@ Controller::Controller() : Node("controller"){
 
 void Controller::frontbox_driver_input_topic_callback(const FrontboxDriverInput msg) {
   float scaled_pedal_position = ((float)(msg.pedal_position) / 500.0);
+  float steering_wheel_position = msg.steering_wheel_position;
+  float bp_front = msg.brake_pressure_front;
+  float bp_rear = msg.brake_pressure_rear;
+
+
 
   auto torque_setpoints = Setpoints();
   int32_t torque_left = INVERTER_MAX_POSITIVE_TORQUE * scaled_pedal_position * 10.0;
