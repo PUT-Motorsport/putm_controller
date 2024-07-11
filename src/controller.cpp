@@ -10,10 +10,10 @@ using namespace putm_vcl_interfaces::msg;
 
 using std::placeholders::_1;
 
-
 class Controller : public rclcpp::Node {
  public:
   Controller();
+  ~Controller();
 
  private:
   static constexpr float INVERTER_MAX_TORQUE = 9.8;
@@ -38,6 +38,7 @@ Controller::Controller()
       control_loop_timer(this->create_wall_timer(10ms, std::bind(&Controller::control_loop, this))) {
   tv_initialize();
 }
+Controller::~Controller() { tv_terminate(); }
 
 void Controller::control_loop() {
   float scaled_pedal_position = scale_pedal_position(fbox_driver_input.pedal_position);  // normalized 0-1
@@ -48,6 +49,12 @@ void Controller::control_loop() {
   (void)bp_rear;
   (void)bp_front;
   (void)steering_wheel_position;
+
+  tv_step();
+  RCLCPP_INFO_STREAM(this->get_logger(), "Trq_FL_Value:" << tv_B.Trq_FL);
+  RCLCPP_INFO_STREAM(this->get_logger(), "Trq_FR_Value:" << tv_B.Trq_FR);
+  RCLCPP_INFO_STREAM(this->get_logger(), "Trq_RL_Value:" << tv_B.Trq_RL);
+  RCLCPP_INFO_STREAM(this->get_logger(), "Trq_RR_Value:" << tv_B.Trq_RR);
 
   auto setpoints = Setpoints();
   setpoints.torques[0] = scale_torque(scaled_pedal_position * INVERTER_MAX_TORQUE);
