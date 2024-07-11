@@ -41,28 +41,33 @@ Controller::Controller()
 Controller::~Controller() { tv_terminate(); }
 
 void Controller::control_loop() {
-  float scaled_pedal_position = scale_pedal_position(fbox_driver_input.pedal_position);  // normalized 0-1
-  float steering_wheel_position = fbox_driver_input.steering_wheel_position;             // degrees -val - 0 - val
-  float bp_front = fbox_driver_input.brake_pressure_front;                               // voltage 0-5v
-  float bp_rear = fbox_driver_input.brake_pressure_rear;                                 // voltage 0-5v
+  if (rtmGetErrorStatus (tv_M) == (NULL) && !rtmGetStopRequested(tv_M)) {
+      float scaled_pedal_position = scale_pedal_position(fbox_driver_input.pedal_position);  // normalized 0-1
+      float steering_wheel_position = fbox_driver_input.steering_wheel_position;             // degrees -val - 0 - val
+      float bp_front = fbox_driver_input.brake_pressure_front;                               // voltage 0-5v
+      float bp_rear = fbox_driver_input.brake_pressure_rear;                                 // voltage 0-5v
 
-  (void)bp_rear;
-  (void)bp_front;
-  (void)steering_wheel_position;
+      (void)bp_rear;
+      (void)bp_front;
+      (void)steering_wheel_position;
 
-  tv_step();
-  RCLCPP_INFO_STREAM(this->get_logger(), "Trq_FL_Value:" << tv_B.Trq_FL);
-  RCLCPP_INFO_STREAM(this->get_logger(), "Trq_FR_Value:" << tv_B.Trq_FR);
-  RCLCPP_INFO_STREAM(this->get_logger(), "Trq_RL_Value:" << tv_B.Trq_RL);
-  RCLCPP_INFO_STREAM(this->get_logger(), "Trq_RR_Value:" << tv_B.Trq_RR);
+      tv_step();
+      RCLCPP_INFO_STREAM(this->get_logger(), "Trq_FL_Value:" << tv_B.Trq_FL);
+      RCLCPP_INFO_STREAM(this->get_logger(), "Trq_FR_Value:" << tv_B.Trq_FR);
+      RCLCPP_INFO_STREAM(this->get_logger(), "Trq_RL_Value:" << tv_B.Trq_RL);
+      RCLCPP_INFO_STREAM(this->get_logger(), "Trq_RR_Value:" << tv_B.Trq_RR);
 
-  auto setpoints = Setpoints();
-  setpoints.torques[0] = scale_torque(scaled_pedal_position * INVERTER_MAX_TORQUE);
-  setpoints.torques[1] = scale_torque(scaled_pedal_position * INVERTER_MAX_TORQUE);
-  setpoints.torques[2] = scale_torque(scaled_pedal_position * INVERTER_MAX_TORQUE);
-  setpoints.torques[3] = scale_torque(scaled_pedal_position * INVERTER_MAX_TORQUE);
+      auto setpoints = Setpoints();
+      setpoints.torques[0] = scale_torque(scaled_pedal_position * INVERTER_MAX_TORQUE);
+      setpoints.torques[1] = scale_torque(scaled_pedal_position * INVERTER_MAX_TORQUE);
+      setpoints.torques[2] = scale_torque(scaled_pedal_position * INVERTER_MAX_TORQUE);
+      setpoints.torques[3] = scale_torque(scaled_pedal_position * INVERTER_MAX_TORQUE);
 
-  setpoints_publisher->publish(setpoints);
+      setpoints_publisher->publish(setpoints);
+    }
+  else {
+    RCLCPP_ERROR_STREAM(this->get_logger(), "Error in Simulink model");
+  }
 }
 
 void Controller::frontbox_driver_input_topic_callback(const FrontboxDriverInput msg) { fbox_driver_input = msg; }
