@@ -17,7 +17,7 @@ target_include_directories(
          $<INSTALL_INTERFACE:include>
          $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/putm_sim_gen>)
 
-       ament_target_dependencies(controller rclcpp putm_vcl_interfaces)
+ament_target_dependencies(controller rclcpp putm_vcl_interfaces)
 target_compile_features(controller PUBLIC c_std_99 cxx_std_17)
 
 install(TARGETS controller DESTINATION lib/${PROJECT_NAME})

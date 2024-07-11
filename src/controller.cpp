@@ -1,11 +1,15 @@
 #include "putm_vcl_interfaces/msg/frontbox_driver_input.hpp"
 #include "putm_vcl_interfaces/msg/setpoints.hpp"
 #include "rclcpp/rclcpp.hpp"
+extern "C" {
+#include "tv.h"
+}
 
 using namespace std::chrono_literals;
 using namespace putm_vcl_interfaces::msg;
 
 using std::placeholders::_1;
+
 
 class Controller : public rclcpp::Node {
  public:
@@ -32,6 +36,7 @@ Controller::Controller()
       frontbox_driver_input_subscriber(this->create_subscription<FrontboxDriverInput>("putm_vcl/frontbox_driver_input", 1,
                                                                                       std::bind(&Controller::frontbox_driver_input_topic_callback, this, _1))),
       control_loop_timer(this->create_wall_timer(10ms, std::bind(&Controller::control_loop, this))) {
+  tv_initialize();
 }
 
 void Controller::control_loop() {
