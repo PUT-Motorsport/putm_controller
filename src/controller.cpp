@@ -58,10 +58,10 @@ void Controller::control_loop() {
       RCLCPP_INFO_STREAM(this->get_logger(), "Trq_RR_Value:" << tv_B.Trq_RR);
 
       auto setpoints = Setpoints();
-      setpoints.torques[0] = scale_torque(scaled_pedal_position * INVERTER_MAX_TORQUE);
-      setpoints.torques[1] = scale_torque(scaled_pedal_position * INVERTER_MAX_TORQUE);
-      setpoints.torques[2] = scale_torque(scaled_pedal_position * INVERTER_MAX_TORQUE);
-      setpoints.torques[3] = scale_torque(scaled_pedal_position * INVERTER_MAX_TORQUE);
+      setpoints.front_left.torque = scale_torque(scaled_pedal_position * INVERTER_MAX_TORQUE);
+      setpoints.front_right.torque = scale_torque(scaled_pedal_position * INVERTER_MAX_TORQUE);
+      setpoints.rear_left.torque = scale_torque(scaled_pedal_position * INVERTER_MAX_TORQUE);
+      setpoints.rear_right.torque = scale_torque(scaled_pedal_position * INVERTER_MAX_TORQUE);
 
       setpoints_publisher->publish(setpoints);
     }
