@@ -10,7 +10,7 @@ find_package(rclcpp REQUIRED)
 find_package(putm_vcl_interfaces REQUIRED)
 
 add_executable(controller src/controller.cpp src/putm_sim_gen/tv.c
-                          src/putm_sim_gen/tv_data.c)
+                          src/putm_sim_gen/tv_data.c src/putm_sim_gen/read.c)
 target_include_directories(
   controller
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
