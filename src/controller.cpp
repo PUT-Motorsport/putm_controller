@@ -61,11 +61,6 @@ void Controller::control_loop() {
     double torque_rl = tv_B.Trq_RL_scaled / tv_P.drive_ratio;
     double torque_rr = tv_B.Trq_RR_scaled / tv_P.drive_ratio;
 
-    RCLCPP_INFO_STREAM(this->get_logger(), "FL: " << torque_fl);
-    RCLCPP_INFO_STREAM(this->get_logger(), "FR: " << torque_fr);
-    RCLCPP_INFO_STREAM(this->get_logger(), "RL: " << torque_rl);
-    RCLCPP_INFO_STREAM(this->get_logger(), "RR: " << torque_rr);
-
     auto setpoints = Setpoints();
     setpoints.front_left.torque = convert_torque(torque_fl);
     setpoints.front_right.torque = convert_torque(torque_fr);
