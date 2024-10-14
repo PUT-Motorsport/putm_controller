@@ -9,8 +9,9 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(putm_vcl_interfaces REQUIRED)
 
-add_executable(controller src/controller.cpp src/putm_sim_gen/tv.c
-                          src/putm_sim_gen/tv_data.c src/putm_sim_gen/read.c)
+add_executable(controller src/controller.cpp src/putm_sim_gen/tv_code.c
+                          src/putm_sim_gen/tv_code_data.c src/putm_sim_gen/read.c src/putm_sim_gen/rtGetInf.c
+                          src/putm_sim_gen/rtGetNaN.c src/putm_sim_gen/rt_nonfinite.c)
 target_include_directories(
   controller
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

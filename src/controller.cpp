@@ -4,7 +4,7 @@
 
 extern "C" {
 #include "read.h"
-#include "tv.h"
+#include "tv_code.h"
 }
 
 using namespace std::chrono_literals;
@@ -40,26 +40,26 @@ Controller::Controller()
       frontbox_driver_input_subscriber(this->create_subscription<FrontboxDriverInput>("putm_vcl/frontbox_driver_input", 1,
                                                                                       std::bind(&Controller::frontbox_driver_input_topic_callback, this, _1))),
       control_loop_timer(this->create_wall_timer(10ms, std::bind(&Controller::control_loop, this))) {
-  tv_initialize();
+  tv_code_initialize();
   read_inputs();
 }
 
-Controller::~Controller() { tv_terminate(); }
+Controller::~Controller() { tv_code_terminate(); }
 
 void Controller::frontbox_driver_input_topic_callback(const FrontboxDriverInput msg) { frontbox_driver_input = msg; }
 
 void Controller::control_loop() {
-  if (rtmGetErrorStatus(tv_M) == (NULL) && !rtmGetStopRequested(tv_M)) {
-    tv_P.acc_pedal_Value = convert_pedal_position(frontbox_driver_input.pedal_position);
-    tv_P.brake_pedal_Value = convert_brake_pressure((frontbox_driver_input.brake_pressure_front + frontbox_driver_input.brake_pressure_rear) / 2);
-    tv_P.delta_Value = convert_steering_wheel_position(frontbox_driver_input.steering_wheel_position);
+  if (rtmGetErrorStatus(tv_code_M) == (NULL) && !rtmGetStopRequested(tv_code_M)) {
+    tv_code_P.acc_pedal_Value = convert_pedal_position(frontbox_driver_input.pedal_position);
+    //tv_code_P.brake_pedal_Value = convert_brake_pressure((frontbox_driver_input.brake_pressure_front + frontbox_driver_input.brake_pressure_rear) / 2);
+    tv_code_P.delta_Value = convert_steering_wheel_position(frontbox_driver_input.steering_wheel_position);
 
-    tv_step();
+    tv_code_step();
 
-    double torque_fl = tv_B.Trq_FL_scaled / tv_P.drive_ratio;
-    double torque_fr = tv_B.Trq_FR_scaled / tv_P.drive_ratio;
-    double torque_rl = tv_B.Trq_RL_scaled / tv_P.drive_ratio;
-    double torque_rr = tv_B.Trq_RR_scaled / tv_P.drive_ratio;
+    double torque_fl = tv_code_B.trq_fl / tv_code_P.drive_ratio;
+    double torque_fr = tv_code_B.trq_fr / tv_code_P.drive_ratio;
+    double torque_rl = tv_code_B.trq_rl / tv_code_P.drive_ratio;
+    double torque_rr = tv_code_B.trq_rr / tv_code_P.drive_ratio;
 
     auto setpoints = Setpoints();
     setpoints.front_left.torque = convert_torque(torque_fl);
