@@ -1,0 +1,2 @@
+Invoking command in '/home/filip/putm/putm_ws/src/putm_controller/build/putm_controller': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/filip/putm/putm_ws/src/putm_controller -DCMAKE_INSTALL_PREFIX=/home/filip/putm/putm_ws/src/putm_controller/install/putm_controller
+Invoked command in '/home/filip/putm/putm_ws/src/putm_controller/build/putm_controller' returned '1': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/filip/putm/putm_ws/src/putm_controller -DCMAKE_INSTALL_PREFIX=/home/filip/putm/putm_ws/src/putm_controller/install/putm_controller

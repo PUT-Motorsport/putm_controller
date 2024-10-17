@@ -25,16 +25,22 @@ class Controller : public rclcpp::Node {
   rclcpp::Subscription<FrontboxDriverInput>::SharedPtr frontbox_driver_input_subscriber;
   rclcpp::TimerBase::SharedPtr control_loop_timer;
   rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_front_left_actual_values1_subscriber;
+  rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_front_right_actual_values1_subscriber;
+  rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_rear_left_actual_values1_subscriber;
+  rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_rear_right_actual_values1_subscriber;
 
   inline double convert_pedal_position(int16_t pedal_position);
   inline double convert_brake_pressure(int16_t brake_pressure);
   inline double convert_steering_wheel_position(int16_t steering_wheel_position);
 
   inline int32_t convert_torque(double torque);
-  uint8_t speed_raw;
+  uint8_t speed_fl, speed_fr, speed_rl, speed_rr;
 
   void frontbox_driver_input_topic_callback(const FrontboxDriverInput msg);
   void amk_actual_values1_callback(const AmkActualValues1 msg);
+  void amk_actual_values2_callback(const AmkActualValues1 msg);
+  void amk_actual_values3_callback(const AmkActualValues1 msg);
+  void amk_actual_values4_callback(const AmkActualValues1 msg);
 
   void control_loop();
 };
@@ -44,7 +50,10 @@ Controller::Controller()
       setpoints_publisher(this->create_publisher<Setpoints>("putm_vcl/setpoints", 1)),
       frontbox_driver_input_subscriber(this->create_subscription<FrontboxDriverInput>("putm_vcl/frontbox_driver_input", 1, std::bind(&Controller::frontbox_driver_input_topic_callback, this, _1))),
       control_loop_timer(this->create_wall_timer(10ms, std::bind(&Controller::control_loop, this))) ,
-      amk_front_left_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/front/left/actual_values1", 1, std::bind(&Controller::amk_actual_values1_callback, this, _1)))
+      amk_front_left_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/front/left/actual_values1", 1, std::bind(&Controller::amk_actual_values1_callback, this, _1))),
+      amk_front_right_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/front/right/actual_values1", 1, std::bind(&Controller::amk_actual_values2_callback, this, _1))),
+      amk_rear_left_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/rear/left/actual_values1", 1, std::bind(&Controller::amk_actual_values3_callback, this, _1))),
+      amk_rear_right_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/rear/right/actual_values1", 1, std::bind(&Controller::amk_actual_values4_callback, this, _1)))
       {
         tv_code_initialize();
         read_inputs();
@@ -56,7 +65,22 @@ void Controller::frontbox_driver_input_topic_callback(const FrontboxDriverInput 
 
 void Controller::amk_actual_values1_callback(const AmkActualValues1 msg) 
 {  
-  speed_raw = abs(msg.actual_velocity);
+  speed_fl = abs(msg.actual_velocity);
+}
+
+void Controller::amk_actual_values2_callback(const AmkActualValues1 msg) 
+{  
+  speed_fr = abs(msg.actual_velocity);
+}
+
+void Controller::amk_actual_values3_callback(const AmkActualValues1 msg) 
+{  
+  speed_rl = abs(msg.actual_velocity);
+}
+
+void Controller::amk_actual_values4_callback(const AmkActualValues1 msg) 
+{  
+  speed_rr = abs(msg.actual_velocity);
 }
 
 
@@ -66,6 +90,14 @@ void Controller::control_loop() {
     //tv_code_P.brake_pedal_Value = convert_brake_pressure((frontbox_driver_input.brake_pressure_front + frontbox_driver_input.brake_pressure_rear) / 2);
     tv_code_P.delta_Value = convert_steering_wheel_position(frontbox_driver_input.steering_wheel_position);
 
+    tv_code_P.whl_speed_fl_Value = speed_fl / tv_code_P.drive_ratio;
+    tv_code_P.whl_speed_fr_Value = speed_fr / tv_code_P.drive_ratio;
+    tv_code_P.whl_speed_rl_Value = speed_rl / tv_code_P.drive_ratio;
+    tv_code_P.whl_speed_rr_Value = speed_rr / tv_code_P.drive_ratio;
+
+    tv_code_P.Switch_Threshold = 0;
+    tv_code_P.Switch_Threshold_i = 0;
+    
     tv_code_step();
 
     double torque_fl = tv_code_B.trq_fl / tv_code_P.drive_ratio;
