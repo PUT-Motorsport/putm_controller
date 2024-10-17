@@ -1,5 +1,6 @@
 #include "putm_vcl_interfaces/msg/frontbox_driver_input.hpp"
 #include "putm_vcl_interfaces/msg/setpoints.hpp"
+#include "putm_vcl_interfaces/msg/amk_actual_values1.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 extern "C" {
@@ -23,13 +24,17 @@ class Controller : public rclcpp::Node {
   rclcpp::Publisher<Setpoints>::SharedPtr setpoints_publisher;
   rclcpp::Subscription<FrontboxDriverInput>::SharedPtr frontbox_driver_input_subscriber;
   rclcpp::TimerBase::SharedPtr control_loop_timer;
+  rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_front_left_actual_values1_subscriber;
 
   inline double convert_pedal_position(int16_t pedal_position);
   inline double convert_brake_pressure(int16_t brake_pressure);
   inline double convert_steering_wheel_position(int16_t steering_wheel_position);
 
   inline int32_t convert_torque(double torque);
+  uint8_t speed_raw;
+
   void frontbox_driver_input_topic_callback(const FrontboxDriverInput msg);
+  void amk_actual_values1_callback(const AmkActualValues1 msg);
 
   void control_loop();
 };
@@ -37,16 +42,23 @@ class Controller : public rclcpp::Node {
 Controller::Controller()
     : Node("controller"),
       setpoints_publisher(this->create_publisher<Setpoints>("putm_vcl/setpoints", 1)),
-      frontbox_driver_input_subscriber(this->create_subscription<FrontboxDriverInput>("putm_vcl/frontbox_driver_input", 1,
-                                                                                      std::bind(&Controller::frontbox_driver_input_topic_callback, this, _1))),
-      control_loop_timer(this->create_wall_timer(10ms, std::bind(&Controller::control_loop, this))) {
-  tv_code_initialize();
-  read_inputs();
-}
+      frontbox_driver_input_subscriber(this->create_subscription<FrontboxDriverInput>("putm_vcl/frontbox_driver_input", 1, std::bind(&Controller::frontbox_driver_input_topic_callback, this, _1))),
+      control_loop_timer(this->create_wall_timer(10ms, std::bind(&Controller::control_loop, this))) ,
+      amk_front_left_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/front/left/actual_values1", 1, std::bind(&Controller::amk_actual_values1_callback, this, _1)))
+      {
+        tv_code_initialize();
+        read_inputs();
+      }
 
 Controller::~Controller() { tv_code_terminate(); }
 
 void Controller::frontbox_driver_input_topic_callback(const FrontboxDriverInput msg) { frontbox_driver_input = msg; }
+
+void Controller::amk_actual_values1_callback(const AmkActualValues1 msg) 
+{  
+  speed_raw = abs(msg.actual_velocity);
+}
+
 
 void Controller::control_loop() {
   if (rtmGetErrorStatus(tv_code_M) == (NULL) && !rtmGetStopRequested(tv_code_M)) {

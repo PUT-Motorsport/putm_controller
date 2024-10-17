@@ -8,6 +8,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(putm_vcl_interfaces REQUIRED)
+find_package(putm_vcl REQUIRED)
 
 add_executable(controller src/controller.cpp src/putm_sim_gen/tv_code.c
                           src/putm_sim_gen/tv_code_data.c src/putm_sim_gen/read.c src/putm_sim_gen/rtGetInf.c
@@ -18,7 +19,7 @@ target_include_directories(
          $<INSTALL_INTERFACE:include>
          $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/putm_sim_gen>)
 
-ament_target_dependencies(controller rclcpp putm_vcl_interfaces)
+ament_target_dependencies(controller rclcpp putm_vcl_interfaces putm_vcl)
 target_compile_features(controller PUBLIC c_std_99 cxx_std_17)
 
 install(TARGETS controller DESTINATION lib/${PROJECT_NAME})
