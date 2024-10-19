@@ -2,6 +2,8 @@
 #include "putm_vcl_interfaces/msg/setpoints.hpp"
 #include "putm_vcl_interfaces/msg/amk_actual_values1.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "putm_vcl_interfaces/msg/xsens_acceleration.hpp"
+#include "putm_vcl_interfaces/msg/xsens_rate_of_turn.hpp"
 
 extern "C" {
 #include "read.h"
@@ -28,6 +30,9 @@ class Controller : public rclcpp::Node {
   rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_front_right_actual_values1_subscriber;
   rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_rear_left_actual_values1_subscriber;
   rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_rear_right_actual_values1_subscriber;
+  rclcpp::Subscription<XsensAcceleration>::SharedPtr xsens_acceleration_ay_subscriber;
+  rclcpp::Subscription<XsensAcceleration>::SharedPtr xsens_acceleration_ax_subscriber;
+  rclcpp::Subscription<XsensRateOfTurn>::SharedPtr xsens_rate_of_turn_subscriber;
 
   inline double convert_pedal_position(int16_t pedal_position);
   inline double convert_brake_pressure(int16_t brake_pressure);
@@ -35,12 +40,16 @@ class Controller : public rclcpp::Node {
 
   inline int32_t convert_torque(double torque);
   uint8_t speed_fl, speed_fr, speed_rl, speed_rr;
+  double ay, ax, yaw_rate;
 
   void frontbox_driver_input_topic_callback(const FrontboxDriverInput msg);
   void amk_actual_values1_callback(const AmkActualValues1 msg);
   void amk_actual_values2_callback(const AmkActualValues1 msg);
   void amk_actual_values3_callback(const AmkActualValues1 msg);
   void amk_actual_values4_callback(const AmkActualValues1 msg);
+  void xsens_acceleration_ay_callback(const XsensAcceleration msg);
+  void xsens_acceleration_ax_callback(const XsensAcceleration msg);
+  void xsens_rate_of_turn_callback(const XsensRateOfTurn msg);
 
   void control_loop();
 };
@@ -53,7 +62,10 @@ Controller::Controller()
       amk_front_left_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/front/left/actual_values1", 1, std::bind(&Controller::amk_actual_values1_callback, this, _1))),
       amk_front_right_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/front/right/actual_values1", 1, std::bind(&Controller::amk_actual_values2_callback, this, _1))),
       amk_rear_left_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/rear/left/actual_values1", 1, std::bind(&Controller::amk_actual_values3_callback, this, _1))),
-      amk_rear_right_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/rear/right/actual_values1", 1, std::bind(&Controller::amk_actual_values4_callback, this, _1)))
+      amk_rear_right_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/rear/right/actual_values1", 1, std::bind(&Controller::amk_actual_values4_callback, this, _1))),
+      xsens_acceleration_ay_subscriber(this->create_subscription<XsensAcceleration>("putm_vcl/xsens_acceleration", 1, std::bind(&Controller::xsens_acceleration_ay_callback, this, _1))),
+      xsens_acceleration_ax_subscriber(this->create_subscription<XsensAcceleration>("putm_vcl/xsens_acceleration", 1, std::bind(&Controller::xsens_acceleration_ax_callback, this, _1))),
+      xsens_rate_of_turn_subscriber(this->create_subscription<XsensRateOfTurn>("putm_vcl/xsens_rate_of_turn", 1, std::bind(&Controller::xsens_rate_of_turn_callback, this, _1)))
       {
         tv_code_initialize();
         read_inputs();
@@ -83,13 +95,28 @@ void Controller::amk_actual_values4_callback(const AmkActualValues1 msg)
   speed_rr = abs(msg.actual_velocity);
 }
 
+void Controller::xsens_acceleration_ay_callback(const XsensAcceleration msg) 
+{  
+  ay = msg.acc_y;
+}
+
+void Controller::xsens_acceleration_ax_callback(const XsensAcceleration msg) 
+{  
+  ax = msg.acc_x;
+}
+
+void Controller::xsens_rate_of_turn_callback(const XsensRateOfTurn msg) 
+{  
+  yaw_rate = msg.gyr_x;
+}
+
 
 
 void Controller::control_loop() {
   if (rtmGetErrorStatus(tv_code_M) == (NULL) && !rtmGetStopRequested(tv_code_M)) {
     tv_code_P.acc_pedal_Value = convert_pedal_position(frontbox_driver_input.pedal_position);
     //tv_code_P.brake_pedal_Value = convert_brake_pressure((frontbox_driver_input.brake_pressure_front + frontbox_driver_input.brake_pressure_rear) / 2);
-    tv_code_P.delta_Value = convert_steering_wheel_position(frontbox_driver_input.steering_wheel_position);
+    tv_code_P.delta_Value = 3.1415*convert_steering_wheel_position(frontbox_driver_input.steering_wheel_position)/180;
 
     tv_code_P.whl_speed_fl_Value = speed_fl / tv_code_P.drive_ratio;
     tv_code_P.whl_speed_fr_Value = speed_fr / tv_code_P.drive_ratio;
@@ -99,8 +126,9 @@ void Controller::control_loop() {
     tv_code_P.Switch_Threshold = 0;
     tv_code_P.Switch_Threshold_i = 0;
 
-    tv_code_P.ax_Value = 2;
-    tv_code_P.ay_Value = 1;
+    tv_code_P.yaw_rate_Value = yaw_rate;
+    tv_code_P.ax_Value = ax;
+    tv_code_P.ay_Value = ay;
     
     tv_code_step();
 
