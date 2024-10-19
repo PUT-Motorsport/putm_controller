@@ -98,8 +98,12 @@ void Controller::control_loop() {
 
     tv_code_P.Switch_Threshold = 0;
     tv_code_P.Switch_Threshold_i = 0;
+
+    tv_code_P.ax_Value = 2;
+    tv_code_P.ay_Value = 1;
     
     tv_code_step();
+
 
     double torque_fl = tv_code_B.trq_fl / tv_code_P.drive_ratio;
     double torque_fr = tv_code_B.trq_fr / tv_code_P.drive_ratio;
