@@ -4,6 +4,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "putm_vcl_interfaces/msg/xsens_acceleration.hpp"
 #include "putm_vcl_interfaces/msg/xsens_rate_of_turn.hpp"
+#include "putm_vcl_interfaces/msg/yaw_ref.hpp"
 
 extern "C" {
 #include "read.h"
@@ -24,6 +25,7 @@ class Controller : public rclcpp::Node {
   FrontboxDriverInput frontbox_driver_input;
 
   rclcpp::Publisher<Setpoints>::SharedPtr setpoints_publisher;
+  rclcpp::Publisher<YawRef>::SharedPtr yaw_rate_ref_publisher;
   rclcpp::Subscription<FrontboxDriverInput>::SharedPtr frontbox_driver_input_subscriber;
   rclcpp::TimerBase::SharedPtr control_loop_timer;
   rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_front_left_actual_values1_subscriber;
@@ -65,7 +67,8 @@ Controller::Controller()
       amk_rear_right_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/rear/right/actual_values1", 1, std::bind(&Controller::amk_actual_values4_callback, this, _1))),
       xsens_acceleration_ay_subscriber(this->create_subscription<XsensAcceleration>("putm_vcl/xsens_acceleration", 1, std::bind(&Controller::xsens_acceleration_ay_callback, this, _1))),
       xsens_acceleration_ax_subscriber(this->create_subscription<XsensAcceleration>("putm_vcl/xsens_acceleration", 1, std::bind(&Controller::xsens_acceleration_ax_callback, this, _1))),
-      xsens_rate_of_turn_subscriber(this->create_subscription<XsensRateOfTurn>("putm_vcl/xsens_rate_of_turn", 1, std::bind(&Controller::xsens_rate_of_turn_callback, this, _1)))
+      xsens_rate_of_turn_subscriber(this->create_subscription<XsensRateOfTurn>("putm_vcl/xsens_rate_of_turn", 1, std::bind(&Controller::xsens_rate_of_turn_callback, this, _1))),
+      yaw_rate_ref_publisher(this->create_publisher<YawRef>("yaw_ref", 1))
       {
         tv_code_initialize();
         read_inputs();
@@ -145,6 +148,8 @@ void Controller::control_loop() {
     torque_rr/=tv_code_P.max_moment;
 
     auto setpoints = Setpoints();
+    auto vpdata = YawRef();
+    vpdata.yaw_rate_ref = 0;
     setpoints.front_left.torque = convert_torque(torque_fl)* -1;
     setpoints.front_right.torque = convert_torque(torque_fr)   ;
     setpoints.rear_left.torque = convert_torque(torque_rl)     ;
@@ -166,6 +171,7 @@ void Controller::control_loop() {
     }*/
 
     setpoints_publisher->publish(setpoints);
+    yaw_rate_ref_publisher->publish(vpdata);
   } else {
     RCLCPP_ERROR_STREAM(this->get_logger(), "Error in Simulink model");
   }
