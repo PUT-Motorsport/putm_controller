@@ -127,9 +127,6 @@ void Controller::control_loop() {
     tv_code_P.whl_speed_rl_Value = speed_rl / tv_code_P.drive_ratio;
     tv_code_P.whl_speed_rr_Value = speed_rr / tv_code_P.drive_ratio;
 
-    tv_code_P.Constant1_Value = 0;
-    tv_code_P.Switch_Threshold = 0;
-    tv_code_P.Switch_Threshold_i = 1;
 
     tv_code_P.yaw_rate_Value = yaw_rate;
     tv_code_P.ax_Value = ax;
@@ -149,7 +146,7 @@ void Controller::control_loop() {
 
     auto setpoints = Setpoints();
     auto vpdata = YawRef();
-    vpdata.yaw_rate_ref = 0;
+    vpdata.yaw_rate_ref = tv_code_B.Sum-tv_code_B.yaw_rate_filter.ax_filter;
     setpoints.front_left.torque = convert_torque(torque_fl)* -1;
     setpoints.front_right.torque = convert_torque(torque_fr)   ;
     setpoints.rear_left.torque = convert_torque(torque_rl)     ;
@@ -157,18 +154,6 @@ void Controller::control_loop() {
 
     //RCLCPP_INFO(this->get_logger(), "RTD: on %f", tv_code_B.Product1);
 
-    /*if(tv_code_P.acc_pedal_Value > 0.1){
-    setpoints.front_left.torque = -70;
-    setpoints.front_right.torque = 70;
-    setpoints.rear_left.torque = 70;
-    setpoints.rear_right.torque = -70;
-    }
-    else{
-    setpoints.front_left.torque = 0;
-    setpoints.front_right.torque = 0;
-    setpoints.rear_left.torque = 0;
-    setpoints.rear_right.torque = 0;
-    }*/
 
     setpoints_publisher->publish(setpoints);
     yaw_rate_ref_publisher->publish(vpdata);
