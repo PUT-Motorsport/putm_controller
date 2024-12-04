@@ -59,6 +59,7 @@ class Controller : public rclcpp::Node {
 Controller::Controller()
     : Node("controller"),
       setpoints_publisher(this->create_publisher<Setpoints>("putm_vcl/setpoints", 1)),
+      yaw_rate_ref_publisher(this->create_publisher<YawRef>("yaw_ref", 1)),
       frontbox_driver_input_subscriber(this->create_subscription<FrontboxDriverInput>("putm_vcl/frontbox_driver_input", 1, std::bind(&Controller::frontbox_driver_input_topic_callback, this, _1))),
       control_loop_timer(this->create_wall_timer(10ms, std::bind(&Controller::control_loop, this))) ,
       amk_front_left_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/front/left/actual_values1", 1, std::bind(&Controller::amk_actual_values1_callback, this, _1))),
@@ -67,8 +68,7 @@ Controller::Controller()
       amk_rear_right_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/rear/right/actual_values1", 1, std::bind(&Controller::amk_actual_values4_callback, this, _1))),
       xsens_acceleration_ay_subscriber(this->create_subscription<XsensAcceleration>("putm_vcl/xsens_acceleration", 1, std::bind(&Controller::xsens_acceleration_ay_callback, this, _1))),
       xsens_acceleration_ax_subscriber(this->create_subscription<XsensAcceleration>("putm_vcl/xsens_acceleration", 1, std::bind(&Controller::xsens_acceleration_ax_callback, this, _1))),
-      xsens_rate_of_turn_subscriber(this->create_subscription<XsensRateOfTurn>("putm_vcl/xsens_rate_of_turn", 1, std::bind(&Controller::xsens_rate_of_turn_callback, this, _1))),
-      yaw_rate_ref_publisher(this->create_publisher<YawRef>("yaw_ref", 1))
+      xsens_rate_of_turn_subscriber(this->create_subscription<XsensRateOfTurn>("putm_vcl/xsens_rate_of_turn", 1, std::bind(&Controller::xsens_rate_of_turn_callback, this, _1)))
       {
         tv_code_initialize();
         read_inputs();
