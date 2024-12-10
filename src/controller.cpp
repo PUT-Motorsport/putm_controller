@@ -5,6 +5,7 @@
 #include "putm_vcl_interfaces/msg/xsens_acceleration.hpp"
 #include "putm_vcl_interfaces/msg/xsens_rate_of_turn.hpp"
 #include "putm_vcl_interfaces/msg/yaw_ref.hpp"
+#include "vectornav_msgs/msg/imu_group.hpp"
 
 extern "C" {
 #include "read.h"
@@ -22,6 +23,7 @@ class Controller : public rclcpp::Node {
   ~Controller();
 
  private:
+  int16_t previous_pos;
   FrontboxDriverInput frontbox_driver_input;
 
   rclcpp::Publisher<Setpoints>::SharedPtr setpoints_publisher;
@@ -35,6 +37,7 @@ class Controller : public rclcpp::Node {
   rclcpp::Subscription<XsensAcceleration>::SharedPtr xsens_acceleration_ay_subscriber;
   rclcpp::Subscription<XsensAcceleration>::SharedPtr xsens_acceleration_ax_subscriber;
   rclcpp::Subscription<XsensRateOfTurn>::SharedPtr xsens_rate_of_turn_subscriber;
+  rclcpp::Subscription<vectornav_msgs::msg::ImuGroup>::SharedPtr vn300_rate_of_turn_subscriber;
 
   inline double convert_pedal_position(int16_t pedal_position);
   inline double convert_brake_pressure(int16_t brake_pressure);
@@ -52,6 +55,7 @@ class Controller : public rclcpp::Node {
   void xsens_acceleration_ay_callback(const XsensAcceleration msg);
   void xsens_acceleration_ax_callback(const XsensAcceleration msg);
   void xsens_rate_of_turn_callback(const XsensRateOfTurn msg);
+  void vn300_rate_of_turn_callback(const vectornav_msgs::msg::ImuGroup msg);
 
   void control_loop();
 };
@@ -68,7 +72,9 @@ Controller::Controller()
       xsens_acceleration_ay_subscriber(this->create_subscription<XsensAcceleration>("putm_vcl/xsens_acceleration", 1, std::bind(&Controller::xsens_acceleration_ay_callback, this, _1))),
       xsens_acceleration_ax_subscriber(this->create_subscription<XsensAcceleration>("putm_vcl/xsens_acceleration", 1, std::bind(&Controller::xsens_acceleration_ax_callback, this, _1))),
       xsens_rate_of_turn_subscriber(this->create_subscription<XsensRateOfTurn>("putm_vcl/xsens_rate_of_turn", 1, std::bind(&Controller::xsens_rate_of_turn_callback, this, _1))),
-      yaw_rate_ref_publisher(this->create_publisher<YawRef>("yaw_ref", 1))
+      yaw_rate_ref_publisher(this->create_publisher<YawRef>("yaw_ref", 1)),
+      vn300_rate_of_turn_subscriber(this->create_subscription<vectornav_msgs::msg::ImuGroup>("vectornav/raw/imu", 1,  std::bind(&Controller::vn300_rate_of_turn_callback, this, _1))),
+      previous_pos(0)
       {
         tv_code_initialize();
         read_inputs();
@@ -110,7 +116,12 @@ void Controller::xsens_acceleration_ax_callback(const XsensAcceleration msg)
 
 void Controller::xsens_rate_of_turn_callback(const XsensRateOfTurn msg) 
 {  
-  yaw_rate = msg.gyr_x;
+
+}
+
+void Controller::vn300_rate_of_turn_callback(const vectornav_msgs::msg::ImuGroup msg) 
+{  
+  yaw_rate = msg.angularrate.z;
 }
 
 
@@ -120,6 +131,8 @@ void Controller::control_loop() {
     tv_code_P.acc_pedal_Value = convert_pedal_position(frontbox_driver_input.pedal_position);
     //tv_code_P.brake_pedal_Value = convert_brake_pressure((frontbox_driver_input.brake_pressure_front + frontbox_driver_input.brake_pressure_rear) / 2);
     tv_code_P.delta_Value = -1*3.1415*convert_steering_wheel_position(frontbox_driver_input.steering_wheel_position)/180;
+
+    tv_code_P.delta_Value/=5;
 
     tv_code_P.lf = tv_code_P.L - tv_code_P.lr;
     tv_code_P.whl_speed_fl_Value = speed_fl / tv_code_P.drive_ratio;
@@ -131,6 +144,9 @@ void Controller::control_loop() {
     tv_code_P.yaw_rate_Value = yaw_rate;
     tv_code_P.ax_Value = ax;
     tv_code_P.ay_Value = ay;
+    tv_code_P.Mz_p=300;
+    tv_code_P.Mz_I=100;
+    tv_code_P.Ku=-1/30000;
     
     tv_code_step();
 
@@ -144,15 +160,21 @@ void Controller::control_loop() {
     torque_rl/=tv_code_P.max_moment;
     torque_rr/=tv_code_P.max_moment;
 
+    // torque_fl = tv_code_P.acc_pedal_Value;
+    // torque_fr=tv_code_P.acc_pedal_Value;
+    // torque_rl=tv_code_P.acc_pedal_Value;
+    // torque_rr=tv_code_P.acc_pedal_Value;
+
+
     auto setpoints = Setpoints();
     auto vpdata = YawRef();
     vpdata.yaw_rate_ref = tv_code_B.Sum-tv_code_B.yaw_rate_filter.ax_filter;
     setpoints.front_left.torque = convert_torque(torque_fl)* -1;
-    setpoints.front_right.torque = convert_torque(torque_fr)   ;
+    setpoints.front_right.torque = convert_torque(torque_fr)  ;
     setpoints.rear_left.torque = convert_torque(torque_rl)     ;
-    setpoints.rear_right.torque = 0; //convert_torque(torque_rr)* -1;
+    setpoints.rear_right.torque = convert_torque(torque_rr)* -1;
 
-    //RCLCPP_INFO(this->get_logger(), "RTD: on %f", tv_code_B.Product1);
+    // RCLCPP_INFO(this->get_logger(), "yaw_rate: %f", yaw_rate);
 
 
     setpoints_publisher->publish(setpoints);
@@ -174,6 +196,12 @@ inline double Controller::convert_brake_pressure(int16_t brake_pressure) {
 
 inline double Controller::convert_steering_wheel_position(int16_t steering_wheel_position) {
   // TODO: Implement steering wheel position conversion
+  if(previous_pos < -100 && steering_wheel_position > 100){
+    steering_wheel_position = -135;
+  }
+  previous_pos = steering_wheel_position;
+
+  
   return steering_wheel_position;
 }
 
