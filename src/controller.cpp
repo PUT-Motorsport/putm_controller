@@ -179,7 +179,7 @@ void Controller::control_loop() {
 
     auto setpoints = Setpoints();
     auto vpdata = YawRef();
-    vpdata.yaw_rate_ref = tv_code_B.Sum-tv_code_B.yaw_rate_filter.ax_filter;
+    vpdata.yaw_rate_ref = tv_code_B.Sum1-tv_code_B.yaw_rate_filter.ax_filter;
     setpoints.front_left.torque = convert_torque(torque_fl)* -1;
     setpoints.front_right.torque = convert_torque(torque_fr)  ;
     setpoints.rear_left.torque = convert_torque(torque_rl)     ;
