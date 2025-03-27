@@ -149,15 +149,20 @@ void Controller::control_loop() {
     tv_code_P.whl_speed_rl_Value = speed_rl / tv_code_P.drive_ratio;
     tv_code_P.whl_speed_rr_Value = speed_rr / tv_code_P.drive_ratio;
 
-    tv_code_P.P_max = 80000;
+    tv_code_P.speed_switch_Threshold = 2;
+
+    tv_code_P.tt_max_Value = 30;
+
+    tv_code_P.regenerative_braking_switch_Cur = 0;
+    tv_code_P.P_max = 700000000;
     tv_code_P.batt_curr_Value = abs(batt_curr/100);
     tv_code_P.yaw_rate_Value = yaw_rate;
     tv_code_P.ax_Value = ax;
     tv_code_P.ay_Value = ay;
-    tv_code_P.Mz_p=300;
-    tv_code_P.Mz_I=100;
-    tv_code_P.Ku=-1/30000;
-    tv_code_P.power_limiter_switch_Threshold = 1;
+    tv_code_P.Mz_p=650;
+    tv_code_P.Mz_I=70;
+    tv_code_P.Ku=-1/300;
+    tv_code_P.power_limiter_switch_Threshold = 100000000;
     
     tv_code_step();
 
@@ -179,13 +184,13 @@ void Controller::control_loop() {
 
     auto setpoints = Setpoints();
     auto vpdata = YawRef();
-    vpdata.yaw_rate_ref = tv_code_B.Sum-tv_code_B.yaw_rate_filter.ax_filter;
+    vpdata.yaw_rate_ref = tv_code_B.est_bat_current;
     setpoints.front_left.torque = convert_torque(torque_fl)* -1;
     setpoints.front_right.torque = convert_torque(torque_fr)  ;
     setpoints.rear_left.torque = convert_torque(torque_rl)     ;
     setpoints.rear_right.torque = convert_torque(torque_rr)* -1;
 
-    // RCLCPP_INFO(this->get_logger(), "est batt current: %f %f", tv_code_B.est_batt_current, tv_code_P.P_max / tv_code_P.batt_voltage);
+    // RCLCPP_INFO(this->get_logger(), "est batt current: %f %f", tv_code_B.est_bat_current, tv_code_P.P_max / tv_code_P.batt_voltage);
 
 
     setpoints_publisher->publish(setpoints);
