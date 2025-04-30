@@ -110,22 +110,24 @@ void Controller::amk_actual_values4_callback(const AmkActualValues1 msg)
 
 void Controller::xsens_acceleration_ay_callback(const XsensAcceleration msg) 
 {  
-  ay = msg.acc_y;
+  // ay = msg.acc_y;
 }
 
 void Controller::xsens_acceleration_ax_callback(const XsensAcceleration msg) 
 {  
-  ax = msg.acc_x;
+  // ax = msg.acc_x;
 }
 
 void Controller::xsens_rate_of_turn_callback(const XsensRateOfTurn msg) 
 {  
-
+  // yaw_rate = msg.gyr_z;
 }
 
 void Controller::vn300_rate_of_turn_callback(const vectornav_msgs::msg::ImuGroup msg) 
 {  
   yaw_rate = msg.angularrate.z;
+  ay = msg.accel.x;
+  ax = msg.accel.y;
 }
 
 void Controller::bms_hv_main_callback(const BmsHvMain msg) 
@@ -149,7 +151,8 @@ void Controller::control_loop() {
     tv_code_P.whl_speed_rl_Value = speed_rl / tv_code_P.drive_ratio;
     tv_code_P.whl_speed_rr_Value = speed_rr / tv_code_P.drive_ratio;
 
-    tv_code_P.speed_switch_Threshold = 2;
+    tv_code_P.speed_switch_Threshold = 4;
+    tv_code_P.active_balance_switch_CurrentSe = 0;
 
     tv_code_P.tt_max_Value = 30;
 
@@ -184,7 +187,10 @@ void Controller::control_loop() {
 
     auto setpoints = Setpoints();
     auto vpdata = YawRef();
-    vpdata.yaw_rate_ref = tv_code_B.est_bat_current;
+    vpdata.est_batt_curr = tv_code_B.est_bat_current;
+    vpdata.current_change = tv_code_B.current_change;
+    vpdata.yaw_rate_ref = tv_code_B.Add + tv_code_B.yaw_rate_filter.ax_filter;
+
     setpoints.front_left.torque = convert_torque(torque_fl)* -1;
     setpoints.front_right.torque = convert_torque(torque_fr)  ;
     setpoints.rear_left.torque = convert_torque(torque_rl)     ;
