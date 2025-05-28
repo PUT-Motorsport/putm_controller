@@ -126,8 +126,8 @@ void Controller::xsens_rate_of_turn_callback(const XsensRateOfTurn msg)
 void Controller::vn300_rate_of_turn_callback(const vectornav_msgs::msg::ImuGroup msg) 
 {  
   yaw_rate = msg.angularrate.z;
-  ay = msg.accel.x;
-  ax = msg.accel.y;
+  // ay = msg.accel.x;
+  // ax = msg.accel.y;
 }
 
 void Controller::bms_hv_main_callback(const BmsHvMain msg) 
@@ -151,12 +151,11 @@ void Controller::control_loop() {
     tv_code_P.whl_speed_rl_Value = speed_rl / tv_code_P.drive_ratio;
     tv_code_P.whl_speed_rr_Value = speed_rr / tv_code_P.drive_ratio;
 
-    tv_code_P.speed_switch_Threshold = 4;
-    tv_code_P.active_balance_switch_CurrentSe = 0;
+    tv_code_P.speed_switch_Threshold = 3;
 
-    tv_code_P.tt_max_Value = 30;
+    tv_code_P.TT_max_Value = 30;
 
-    tv_code_P.regenerative_braking_switch_Cur = 0;
+    tv_code_P.regen_switch_CurrentSetting = 0;
     tv_code_P.P_max = 700000000;
     tv_code_P.batt_curr_Value = abs(batt_curr/100);
     tv_code_P.yaw_rate_Value = yaw_rate;
@@ -165,7 +164,7 @@ void Controller::control_loop() {
     tv_code_P.Mz_p=650;
     tv_code_P.Mz_I=70;
     tv_code_P.Ku=-1/300;
-    tv_code_P.power_limiter_switch_Threshold = 100000000;
+    tv_code_P.power_speed_limiter_switch_Thre = 100000000;
     
     tv_code_step();
 
@@ -187,9 +186,9 @@ void Controller::control_loop() {
 
     auto setpoints = Setpoints();
     auto vpdata = YawRef();
-    vpdata.est_batt_curr = tv_code_B.est_bat_current;
-    vpdata.current_change = tv_code_B.current_change;
-    vpdata.yaw_rate_ref = tv_code_B.Add + tv_code_B.yaw_rate_filter.ax_filter;
+    // vpdata.est_batt_curr = tv_code_B.est_bat_current;
+    // vpdata.current_change = tv_code_B.current_change;
+    // vpdata.yaw_rate_ref = tv_code_B.Add + tv_code_B.yaw_rate_filter.ax_filter;
 
     setpoints.front_left.torque = convert_torque(torque_fl)* -1;
     setpoints.front_right.torque = convert_torque(torque_fr)  ;
@@ -200,7 +199,7 @@ void Controller::control_loop() {
 
 
     setpoints_publisher->publish(setpoints);
-    yaw_rate_ref_publisher->publish(vpdata);
+    // yaw_rate_ref_publisher->publish(vpdata);
   } else {
     RCLCPP_ERROR_STREAM(this->get_logger(), "Error in Simulink model");
   }
