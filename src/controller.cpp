@@ -126,8 +126,8 @@ void Controller::xsens_rate_of_turn_callback(const XsensRateOfTurn msg)
 void Controller::vn300_rate_of_turn_callback(const vectornav_msgs::msg::ImuGroup msg) 
 {  
   yaw_rate = msg.angularrate.z;
-  // ay = msg.accel.x;
-  // ax = msg.accel.y;
+  ay = msg.accel.y * -1;
+  ax = msg.accel.x * -1;
 }
 
 void Controller::bms_hv_main_callback(const BmsHvMain msg) 
@@ -145,25 +145,26 @@ void Controller::control_loop() {
 
     tv_code_P.delta_Value/=5;
 
-    tv_code_P.lf = tv_code_P.L - tv_code_P.lr;
+    tv_code_P.delta_Value=0;
+
     tv_code_P.whl_speed_fl_Value = speed_fl / tv_code_P.drive_ratio;
     tv_code_P.whl_speed_fr_Value = speed_fr / tv_code_P.drive_ratio;
     tv_code_P.whl_speed_rl_Value = speed_rl / tv_code_P.drive_ratio;
     tv_code_P.whl_speed_rr_Value = speed_rr / tv_code_P.drive_ratio;
 
-    tv_code_P.speed_switch_Threshold = 3;
+    tv_code_P.speed_switch_Threshold = 2;
 
     tv_code_P.TT_max_Value = 30;
 
-    tv_code_P.regen_switch_CurrentSetting = 0;
+    tv_code_P.regen_switch_CurrentSetting = 1;
     tv_code_P.P_max = 700000000;
     tv_code_P.batt_curr_Value = abs(batt_curr/100);
     tv_code_P.yaw_rate_Value = yaw_rate;
     tv_code_P.ax_Value = ax;
     tv_code_P.ay_Value = ay;
-    tv_code_P.Mz_p=650;
-    tv_code_P.Mz_I=70;
-    tv_code_P.Ku=-1/300;
+    tv_code_P.Mz_p=100;
+    tv_code_P.Mz_I=1;
+    tv_code_P.Ku=-1/2000;
     tv_code_P.power_speed_limiter_switch_Thre = 100000000;
     
     tv_code_step();
@@ -191,9 +192,10 @@ void Controller::control_loop() {
     // vpdata.yaw_rate_ref = tv_code_B.Add + tv_code_B.yaw_rate_filter.ax_filter;
 
     setpoints.front_left.torque = convert_torque(torque_fl)* -1;
-    setpoints.front_right.torque = convert_torque(torque_fr)  ;
-    setpoints.rear_left.torque = convert_torque(torque_rl)     ;
+    setpoints.front_right.torque = convert_torque(torque_fr);
+    setpoints.rear_left.torque = convert_torque(torque_rl);
     setpoints.rear_right.torque = convert_torque(torque_rr)* -1;
+
 
     // RCLCPP_INFO(this->get_logger(), "est batt current: %f %f", tv_code_B.est_bat_current, tv_code_P.P_max / tv_code_P.batt_voltage);
 
