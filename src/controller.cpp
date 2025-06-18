@@ -179,10 +179,10 @@ void Controller::control_loop() {
     torque_rl/=tv_code_P.max_moment;
     torque_rr/=tv_code_P.max_moment;
 
-    // torque_fl = tv_code_P.acc_pedal_Value;
-    // torque_fr=tv_code_P.acc_pedal_Value;
-    // torque_rl=tv_code_P.acc_pedal_Value;
-    // torque_rr=tv_code_P.acc_pedal_Value;
+    torque_fl = tv_code_P.acc_pedal_Value;
+    torque_fr=tv_code_P.acc_pedal_Value;
+    torque_rl=tv_code_P.acc_pedal_Value;
+    torque_rr=tv_code_P.acc_pedal_Value;
 
 
     auto setpoints = Setpoints();
