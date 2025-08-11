@@ -157,15 +157,15 @@ void Controller::control_loop() {
     tv_code_P.TT_max_Value = 30;
 
     tv_code_P.regen_switch_CurrentSetting = 1;
-    tv_code_P.P_max = 700000000;
-    tv_code_P.batt_curr_Value = abs(batt_curr/100);
+    tv_code_P.P_max = 80000;
+    // tv_code_P.batt_curr_Value = abs(batt_curr/100);
     tv_code_P.yaw_rate_Value = yaw_rate;
     tv_code_P.ax_Value = ax;
     tv_code_P.ay_Value = ay;
     tv_code_P.Mz_p=100;
     tv_code_P.Mz_I=1;
     tv_code_P.Ku=-1/2000;
-    tv_code_P.power_speed_limiter_switch_Thre = 100000000;
+    // tv_code_P.power_speed_limiter_switch_Thre = 100000000;
     
     tv_code_step();
 
