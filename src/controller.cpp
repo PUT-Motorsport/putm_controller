@@ -110,24 +110,24 @@ void Controller::amk_actual_values4_callback(const AmkActualValues1 msg)
 
 void Controller::xsens_acceleration_ay_callback(const XsensAcceleration msg) 
 {  
-  ay = msg.acc_y;
+  // ay = msg.acc_y;
 }
 
 void Controller::xsens_acceleration_ax_callback(const XsensAcceleration msg) 
 {  
-  ax = msg.acc_x;
+  // ax = msg.acc_x;
 }
 
 void Controller::xsens_rate_of_turn_callback(const XsensRateOfTurn msg) 
 {  
-  yaw_rate = msg.gyr_z;
+  // yaw_rate = msg.gyr_z;
 }
 
 void Controller::vn300_rate_of_turn_callback(const vectornav_msgs::msg::ImuGroup msg) 
 {  
-  // yaw_rate = msg.angularrate.z;
-  // ay = msg.accel.y * -1;
-  // ax = msg.accel.x * -1;
+  yaw_rate = msg.angularrate.z;
+  ay = msg.accel.y * -1;
+  ax = msg.accel.x * -1;
 }
 
 void Controller::bms_hv_main_callback(const BmsHvMain msg) 
@@ -145,7 +145,6 @@ void Controller::control_loop() {
 
     tv_code_P.delta_Value/=5;
 
-    tv_code_P.delta_Value=0;
 
     tv_code_P.whl_speed_fl_Value = speed_fl / tv_code_P.drive_ratio;
     tv_code_P.whl_speed_fr_Value = speed_fr / tv_code_P.drive_ratio;
@@ -156,7 +155,8 @@ void Controller::control_loop() {
 
     tv_code_P.TT_max_Value = 30;
 
-    tv_code_P.regen_switch_CurrentSetting = 0;
+    tv_code_P.regen_switch_CurrentSetting = 1;
+    tv_code_P.ManualSwitch_CurrentSetting = 1;
     tv_code_P.P_max = 80000;
     // tv_code_P.batt_curr_Value = abs(batt_curr/100);
     tv_code_P.yaw_rate_Value = yaw_rate;
@@ -167,22 +167,24 @@ void Controller::control_loop() {
     tv_code_P.Ku=-1/2000;
     // tv_code_P.power_speed_limiter_switch_Thre = 100000000;
     
-    tv_code_step();
+    double torque_fl = tv_code_P.acc_pedal_Value;
+    double torque_fr=tv_code_P.acc_pedal_Value;
+    double torque_rl=tv_code_P.acc_pedal_Value;
+    double torque_rr=tv_code_P.acc_pedal_Value;
+    
+    // tv_code_step();
 
-    double torque_fl = tv_code_B.trq_fl / tv_code_P.drive_ratio ;
-    double torque_fr = tv_code_B.trq_fr / tv_code_P.drive_ratio;
-    double torque_rl = tv_code_B.trq_rl / tv_code_P.drive_ratio ;
-    double torque_rr = tv_code_B.trq_rr / tv_code_P.drive_ratio ;
+    // double torque_fl = tv_code_B.trq_fl / tv_code_P.drive_ratio ;
+    // double torque_fr = tv_code_B.trq_fr / tv_code_P.drive_ratio;
+    // double torque_rl = tv_code_B.trq_rl / tv_code_P.drive_ratio ;
+    // double torque_rr = tv_code_B.trq_rr / tv_code_P.drive_ratio ;
 
-    torque_fl/=tv_code_P.max_moment;
-    torque_fr/=tv_code_P.max_moment;
-    torque_rl/=tv_code_P.max_moment;
-    torque_rr/=tv_code_P.max_moment;
+    // torque_fl/=tv_code_P.max_moment;
+    // torque_fr/=tv_code_P.max_moment;
+    // torque_rl/=tv_code_P.max_moment;
+    // torque_rr/=tv_code_P.max_moment;
 
-    // torque_fl = tv_code_P.acc_pedal_Value;
-    // torque_fr=tv_code_P.acc_pedal_Value;
-    // torque_rl=tv_code_P.acc_pedal_Value;
-    // torque_rr=tv_code_P.acc_pedal_Value;
+    
 
 
     auto setpoints = Setpoints();
@@ -192,19 +194,21 @@ void Controller::control_loop() {
     vpdata.yaw_rate_ref = tv_code_B.yaw_ref;
     vpdata.est_power = tv_code_B.est_power;
     vpdata.torque_fixed = tv_code_B.torque_fixed;
-    vpdata.ifl = tv_code_B.IFL;
-    vpdata.ufl = tv_code_B.UFL;
-    vpdata.ifr = tv_code_B.IFR;
-    vpdata.ufr = tv_code_B.UFR;
-    vpdata.irl = tv_code_B.IRL;
-    vpdata.url = tv_code_B.URL;
-    vpdata.irr = tv_code_B.IRR;
-    vpdata.urr = tv_code_B.URR;
+    vpdata.ifl = tv_code_B.T_max;
+    // vpdata.ufl = tv_code_B.UFL;
+    // vpdata.ifr = tv_code_B.IFR;
+    // vpdata.ufr = tv_code_B.UFR;
+    // vpdata.irl = tv_code_B.IRL;
+    // vpdata.url = tv_code_B.URL;
+    // vpdata.irr = tv_code_B.IRR;
+    // vpdata.urr = tv_code_B.URR;
 
     setpoints.front_left.torque = convert_torque(torque_fl)* -1;
     setpoints.front_right.torque = convert_torque(torque_fr);
     setpoints.rear_left.torque = convert_torque(torque_rl);
-    setpoints.rear_right.torque = convert_torque(torque_rr)* -1;
+    // setpoints.rear_right.torque = convert_torque(torque_rr)* -1;
+    //michal
+    setpoints.rear_right.torque = convert_torque(torque_rr);
 
     // RCLCPP_INFO(this->get_logger(), "est batt current: %f %f", tv_code_B.est_bat_current, tv_code_P.P_max / tv_code_P.batt_voltage);
 
