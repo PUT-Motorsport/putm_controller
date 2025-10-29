@@ -146,18 +146,16 @@ void Controller::control_loop() {
     tv_code_P.delta_Value/=5;
 
 
-    tv_code_P.whl_speed_fl_Value = speed_fl / tv_code_P.drive_ratio;
-    tv_code_P.whl_speed_fr_Value = speed_fr / tv_code_P.drive_ratio;
+    tv_code_P.whl_speed_fl_Value = speed_rl / tv_code_P.drive_ratio;
+    tv_code_P.whl_speed_fr_Value = speed_rr / tv_code_P.drive_ratio;
     tv_code_P.whl_speed_rl_Value = speed_rl / tv_code_P.drive_ratio;
     tv_code_P.whl_speed_rr_Value = speed_rr / tv_code_P.drive_ratio;
 
-    tv_code_P.speed_switch_Threshold = 2;
+    tv_code_P.speed_switch_Threshold = 100;
 
     tv_code_P.TT_max_Value = 30;
 
     tv_code_P.regen_switch_CurrentSetting = 1;
-    tv_code_P.ManualSwitch_CurrentSetting = 1;
-    tv_code_P.P_max = 80000;
     // tv_code_P.batt_curr_Value = abs(batt_curr/100);
     tv_code_P.yaw_rate_Value = yaw_rate;
     tv_code_P.ax_Value = ax;
@@ -189,12 +187,12 @@ void Controller::control_loop() {
 
     auto setpoints = Setpoints();
     auto vpdata = YawRef();
-    // vpdata.est_batt_curr = tv_code_B.est_bat_current;
-    // vpdata.current_change = tv_code_B.current_change;
-    vpdata.yaw_rate_ref = tv_code_B.yaw_ref;
-    vpdata.est_power = tv_code_B.est_power;
-    vpdata.torque_fixed = tv_code_B.torque_fixed;
-    vpdata.ifl = tv_code_B.T_max;
+    vpdata.est_batt_curr = tv_code_B.car_vx;
+    vpdata.current_change = tv_code_B.ek_slip;
+    // vpdata.yaw_rate_ref = tv_code_B.yaw_ref;
+    // vpdata.est_power = tv_code_B.est_power;
+    // vpdata.torque_fixed = tv_code_B.torque_fixed;
+    // vpdata.ifl = tv_code_B.T_max;
     // vpdata.ufl = tv_code_B.UFL;
     // vpdata.ifr = tv_code_B.IFR;
     // vpdata.ufr = tv_code_B.UFR;
