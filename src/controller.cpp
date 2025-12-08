@@ -125,9 +125,12 @@ void Controller::xsens_rate_of_turn_callback(const XsensRateOfTurn msg)
 
 void Controller::vn300_rate_of_turn_callback(const vectornav_msgs::msg::ImuGroup msg) 
 {  
-  yaw_rate = msg.angularrate.z;
-  ay = msg.accel.y * -1;
-  ax = msg.accel.x * -1;
+  // yaw_rate = msg.angularrate.z;
+  // ay = msg.accel.y * -1;
+  // ax = msg.accel.x * -1;
+  yaw_rate = 0;
+  ay = 0;
+  ax = 0;
 }
 
 void Controller::bms_hv_main_callback(const BmsHvMain msg) 
@@ -145,13 +148,15 @@ void Controller::control_loop() {
 
     tv_code_P.delta_Value/=5;
 
+    tv_code_P.avg_min_speed_switch_CurrentSet = 1;
 
-    tv_code_P.whl_speed_fl_Value = speed_rl / tv_code_P.drive_ratio;
-    tv_code_P.whl_speed_fr_Value = speed_rr / tv_code_P.drive_ratio;
-    tv_code_P.whl_speed_rl_Value = speed_rl / tv_code_P.drive_ratio;
-    tv_code_P.whl_speed_rr_Value = speed_rr / tv_code_P.drive_ratio;
 
-    tv_code_P.speed_switch_Threshold = 100;
+    tv_code_P.whl_speed_fl_Value = speed_rl;
+    tv_code_P.whl_speed_fr_Value = speed_fr;
+    tv_code_P.whl_speed_rl_Value = speed_rl;
+    tv_code_P.whl_speed_rr_Value = speed_rr;
+
+    tv_code_P.speed_switch_Threshold = 1;
 
     tv_code_P.TT_max_Value = 30;
 
@@ -165,31 +170,30 @@ void Controller::control_loop() {
     tv_code_P.Ku=-1/2000;
     // tv_code_P.power_speed_limiter_switch_Thre = 100000000;
     
-    double torque_fl = tv_code_P.acc_pedal_Value;
-    double torque_fr=tv_code_P.acc_pedal_Value;
-    double torque_rl=tv_code_P.acc_pedal_Value;
-    double torque_rr=tv_code_P.acc_pedal_Value;
+    // double torque_fl = tv_code_P.acc_pedal_Value;
+    // double torque_fr=tv_code_P.acc_pedal_Value;
+    // double torque_rl=tv_code_P.acc_pedal_Value;
+    // double torque_rr=tv_code_P.acc_pedal_Value;
     
-    // tv_code_step();
+    tv_code_step();
 
-    // double torque_fl = tv_code_B.trq_fl / tv_code_P.drive_ratio ;
-    // double torque_fr = tv_code_B.trq_fr / tv_code_P.drive_ratio;
-    // double torque_rl = tv_code_B.trq_rl / tv_code_P.drive_ratio ;
-    // double torque_rr = tv_code_B.trq_rr / tv_code_P.drive_ratio ;
+    double torque_fl = tv_code_B.trq_fl / tv_code_P.drive_ratio ;
+    double torque_fr = tv_code_B.trq_fr / tv_code_P.drive_ratio;
+    double torque_rl = tv_code_B.trq_rl / tv_code_P.drive_ratio ;
+    double torque_rr = tv_code_B.trq_rr / tv_code_P.drive_ratio ;
 
-    // torque_fl/=tv_code_P.max_moment;
-    // torque_fr/=tv_code_P.max_moment;
-    // torque_rl/=tv_code_P.max_moment;
-    // torque_rr/=tv_code_P.max_moment;
+    torque_fl/=tv_code_P.max_moment;
+    torque_fr/=tv_code_P.max_moment;
+    torque_rl/=tv_code_P.max_moment;
+    torque_rr/=tv_code_P.max_moment;
 
     
 
 
     auto setpoints = Setpoints();
     auto vpdata = YawRef();
-    vpdata.est_batt_curr = tv_code_B.car_vx;
-    vpdata.current_change = tv_code_B.ek_slip;
-    // vpdata.yaw_rate_ref = tv_code_B.yaw_ref;
+    vpdata.current_change = tv_code_B.speed_filter_fr.speed_filter_fl;
+    vpdata.yaw_rate_ref = tv_code_B.avg_min_speed_switch;
     // vpdata.est_power = tv_code_B.est_power;
     // vpdata.torque_fixed = tv_code_B.torque_fixed;
     // vpdata.ifl = tv_code_B.T_max;
