@@ -27,6 +27,8 @@ class Controller : public rclcpp::Node {
   int16_t previous_pos;
   FrontboxDriverInput frontbox_driver_input;
 
+  rclcpp::Time last_call_time_;
+
   rclcpp::Publisher<Setpoints>::SharedPtr setpoints_publisher;
   rclcpp::Publisher<YawRef>::SharedPtr yaw_rate_ref_publisher;
   rclcpp::Subscription<FrontboxDriverInput>::SharedPtr frontbox_driver_input_subscriber;
@@ -61,6 +63,10 @@ class Controller : public rclcpp::Node {
   void bms_hv_main_callback(const BmsHvMain msg);
 
   void control_loop();
+  double torque_fl;
+  double torque_fr;
+  double torque_rl;
+  double torque_rr;
 };
 
 Controller::Controller()
@@ -80,8 +86,13 @@ Controller::Controller()
       bms_hv_main_subscriber(this->create_subscription<BmsHvMain>("putm_vcl/bms_hv_main", 1,  std::bind(&Controller::bms_hv_main_callback, this, _1))),
       previous_pos(0)
       {
+        last_call_time_ = this->now();
         tv_code_initialize();
         read_inputs();
+        torque_fl = 0;
+        torque_fr = 0;
+        torque_rl = 0;
+        torque_rr = 0;
       }
 
 Controller::~Controller() { tv_code_terminate(); }
@@ -142,6 +153,13 @@ void Controller::bms_hv_main_callback(const BmsHvMain msg)
 
 void Controller::control_loop() {
   if (rtmGetErrorStatus(tv_code_M) == (NULL) && !rtmGetStopRequested(tv_code_M)) {
+    //testing loop duration
+    auto now = this->now();
+    auto time_since_last_call = now - last_call_time_;
+    last_call_time_ = now;
+
+    RCLCPP_INFO(this->get_logger(), "Time since last call: %f ms", time_since_last_call.seconds() * 1000.0);
+    
     tv_code_P.acc_pedal_Value = convert_pedal_position(frontbox_driver_input.pedal_position);
     //tv_code_P.brake_pedal_Value = convert_brake_pressure((frontbox_driver_input.brake_pressure_front + frontbox_driver_input.brake_pressure_rear) / 2);
     tv_code_P.delta_Value = -1*3.1415*convert_steering_wheel_position(frontbox_driver_input.steering_wheel_position)/180;
@@ -170,22 +188,22 @@ void Controller::control_loop() {
     tv_code_P.Ku=-1/2000;
     // tv_code_P.power_speed_limiter_switch_Thre = 100000000;
     
-    // double torque_fl = tv_code_P.acc_pedal_Value;
-    // double torque_fr=tv_code_P.acc_pedal_Value;
-    // double torque_rl=tv_code_P.acc_pedal_Value;
-    // double torque_rr=tv_code_P.acc_pedal_Value;
-    
     tv_code_step();
 
-    double torque_fl = tv_code_B.trq_fl / tv_code_P.drive_ratio ;
-    double torque_fr = tv_code_B.trq_fr / tv_code_P.drive_ratio;
-    double torque_rl = tv_code_B.trq_rl / tv_code_P.drive_ratio ;
-    double torque_rr = tv_code_B.trq_rr / tv_code_P.drive_ratio ;
+    torque_fl = tv_code_P.acc_pedal_Value;
+    torque_fr = tv_code_P.acc_pedal_Value;
+    torque_rl = tv_code_P.acc_pedal_Value;
+    torque_rr = tv_code_P.acc_pedal_Value;
 
-    torque_fl/=tv_code_P.max_moment;
-    torque_fr/=tv_code_P.max_moment;
-    torque_rl/=tv_code_P.max_moment;
-    torque_rr/=tv_code_P.max_moment;
+    // double torque_fl = tv_code_B.trq_fl / tv_code_P.drive_ratio ;
+    // double torque_fr = tv_code_B.trq_fr / tv_code_P.drive_ratio;
+    // double torque_rl = tv_code_B.trq_rl / tv_code_P.drive_ratio ;
+    // double torque_rr = tv_code_B.trq_rr / tv_code_P.drive_ratio ;
+
+    // torque_fl/=tv_code_P.max_moment;
+    // torque_fr/=tv_code_P.max_moment;
+    // torque_rl/=tv_code_P.max_moment;
+    // torque_rr/=tv_code_P.max_moment;
 
     
 
@@ -217,6 +235,10 @@ void Controller::control_loop() {
 
     setpoints_publisher->publish(setpoints);
     yaw_rate_ref_publisher->publish(vpdata);
+    // testing loop duration
+    auto end_time = this->now();
+    auto loop_duration = end_time - now;
+    RCLCPP_INFO(this->get_logger(), "Loop duration: %f ms", loop_duration.seconds() * 1000.0);
   } else {
     RCLCPP_ERROR_STREAM(this->get_logger(), "Error in Simulink model");
   }
