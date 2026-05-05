@@ -27,7 +27,6 @@ class Controller : public rclcpp::Node {
   int16_t previous_pos;
   FrontboxDriverInput frontbox_driver_input;
 
-  rclcpp::Time last_call_time_;
 
   rclcpp::Publisher<Setpoints>::SharedPtr setpoints_publisher;
   rclcpp::Publisher<YawRef>::SharedPtr yaw_rate_ref_publisher;
@@ -86,7 +85,6 @@ Controller::Controller()
       bms_hv_main_subscriber(this->create_subscription<BmsHvMain>("putm_vcl/bms_hv_main", 1,  std::bind(&Controller::bms_hv_main_callback, this, _1))),
       previous_pos(0)
       {
-        last_call_time_ = this->now();
         tv_code_initialize();
         read_inputs();
         torque_fl = 0;
@@ -153,20 +151,13 @@ void Controller::bms_hv_main_callback(const BmsHvMain msg)
 
 void Controller::control_loop() {
   if (rtmGetErrorStatus(tv_code_M) == (NULL) && !rtmGetStopRequested(tv_code_M)) {
-    //testing loop duration
-    auto now = this->now();
-    auto time_since_last_call = now - last_call_time_;
-    last_call_time_ = now;
-
-    RCLCPP_INFO(this->get_logger(), "Time since last call: %f ms", time_since_last_call.seconds() * 1000.0);
     
+    // convert pedal and steering
     tv_code_P.acc_pedal_Value = convert_pedal_position(frontbox_driver_input.pedal_position);
     //tv_code_P.brake_pedal_Value = convert_brake_pressure((frontbox_driver_input.brake_pressure_front + frontbox_driver_input.brake_pressure_rear) / 2);
     tv_code_P.delta_Value = -1*3.1415*convert_steering_wheel_position(frontbox_driver_input.steering_wheel_position)/180;
-
     tv_code_P.delta_Value/=5;
 
-    tv_code_P.avg_min_speed_switch_CurrentSet = 1;
 
 
     tv_code_P.whl_speed_fl_Value = speed_rl;
@@ -179,14 +170,12 @@ void Controller::control_loop() {
     tv_code_P.TT_max_Value = 30;
 
     tv_code_P.regen_switch_CurrentSetting = 1;
-    // tv_code_P.batt_curr_Value = abs(batt_curr/100);
     tv_code_P.yaw_rate_Value = yaw_rate;
     tv_code_P.ax_Value = ax;
     tv_code_P.ay_Value = ay;
     tv_code_P.Mz_p=300;
     tv_code_P.Mz_I=30;
     tv_code_P.Ku=-1/2000;
-    // tv_code_P.power_speed_limiter_switch_Thre = 100000000;
     
     tv_code_step();
 
@@ -209,36 +198,14 @@ void Controller::control_loop() {
 
 
     auto setpoints = Setpoints();
-    auto vpdata = YawRef();
-    vpdata.current_change = tv_code_B.speed_filter_fr.speed_filter_fl;
-    vpdata.yaw_rate_ref = tv_code_B.avg_min_speed_switch;
-    // vpdata.est_power = tv_code_B.est_power;
-    // vpdata.torque_fixed = tv_code_B.torque_fixed;
-    // vpdata.ifl = tv_code_B.T_max;
-    // vpdata.ufl = tv_code_B.UFL;
-    // vpdata.ifr = tv_code_B.IFR;
-    // vpdata.ufr = tv_code_B.UFR;
-    // vpdata.irl = tv_code_B.IRL;
-    // vpdata.url = tv_code_B.URL;
-    // vpdata.irr = tv_code_B.IRR;
-    // vpdata.urr = tv_code_B.URR;
 
     setpoints.front_left.torque = convert_torque(torque_fl)* -1;
     setpoints.front_right.torque = convert_torque(torque_fr);
     setpoints.rear_left.torque = convert_torque(torque_rl);
-    // setpoints.rear_right.torque = convert_torque(torque_rr)* -1;
-    //michal
     setpoints.rear_right.torque = convert_torque(torque_rr);
-
-    // RCLCPP_INFO(this->get_logger(), "est batt current: %f %f", tv_code_B.est_bat_current, tv_code_P.P_max / tv_code_P.batt_voltage);
-
-
+    // publish setpoints
     setpoints_publisher->publish(setpoints);
-    yaw_rate_ref_publisher->publish(vpdata);
-    // testing loop duration
-    auto end_time = this->now();
-    auto loop_duration = end_time - now;
-    RCLCPP_INFO(this->get_logger(), "Loop duration: %f ms", loop_duration.seconds() * 1000.0);
+
   } else {
     RCLCPP_ERROR_STREAM(this->get_logger(), "Error in Simulink model");
   }
