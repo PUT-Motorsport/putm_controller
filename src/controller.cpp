@@ -53,11 +53,13 @@ class Controller : public rclcpp::Node {
   inline double convert_brake_pressure(int16_t brake_pressure);
   inline double convert_steering_wheel_position(int16_t steering_wheel_position);
   inline int32_t convert_torque(double torque);
+  inline double convert_wheel_speed(double rpm);
+  inline void convert_steering_angle(double steering_wheel_deg, double &delta_l_rad, double &delta_r_rad);
   
   // Stany
   bool is_initialized;
   int16_t previous_pos;
-  uint8_t speed_fl, speed_fr, speed_rl, speed_rr;
+  double speed_fl, speed_fr, speed_rl, speed_rr;
   double ay, ax, yaw_rate, batt_curr;
   Setpoints setpoints;
 
@@ -176,15 +178,18 @@ void Controller::control_loop() {
   // double steering_angle = convert_steering_wheel_position(frontbox_driver_input.steering_wheel_position);
   // double delta_kier = -1.0 * (M_PI * steering_angle / 180.0) / 5.0; 
 
-  // double w_fl = speed_fl * 0.10472;
-  // double w_fr = speed_fr * 0.10472;
-  // double w_rl = speed_rl * 0.10472;
-  // double w_rr = speed_rr * 0.10472;
+  // double w_fl = convert_wheel_speed(speed_fl);
+  // double w_fr = convert_wheel_speed(speed_fr);
+  // double w_rl = convert_wheel_speed(speed_rl);
+  // double w_rr = convert_wheel_speed(speed_rr);
 
   double pedal = 0.8;
-  double delta_kier = 0.2;
+  double steering_angle_deg = 0.2;
+  double delta_l_rad = 0.0;
+  double delta_r_rad = 0.0;
+  convert_steering_angle(steering_angle_deg, delta_l_rad, delta_r_rad);
   
-  double vx_est = 15.0;
+  double vx_est = 0.0;
   double vy_est = 0.5;
   yaw_rate = 0.3;
   
@@ -200,8 +205,8 @@ void Controller::control_loop() {
 
   // Nadpisanie parametrów bufora P
   p_val[0] = 0.0; // r_ref
-  p_val[1] = delta_kier;
-  p_val[2] = delta_kier;
+  p_val[1] = delta_l_rad;
+  p_val[2] = delta_r_rad;
   p_val[3] = 750.0; // Fz_fl
   p_val[4] = 750.0; // Fz_fr
   p_val[5] = 750.0; // Fz_rl
@@ -323,6 +328,25 @@ inline double Controller::convert_steering_wheel_position(int16_t steering_wheel
 
   
   return steering_wheel_position;
+}
+
+inline double Controller::convert_wheel_speed(double rpm) {
+  
+  // Przeliczenie RPM na rad/s (RPM * 2*PI / 60)
+  // Zakładając przełożenie 14.25:
+  double gear_ratio = 14.25; 
+  return (rpm * (M_PI / 30.0)) / gear_ratio;
+}
+
+inline void Controller::convert_steering_angle(double steering_wheel_deg, double &delta_l_rad, double &delta_r_rad) {
+  
+  // Wielomiany geometrii Ackermanna
+  double delta_l_deg = -0.0000942 * std::pow(steering_wheel_deg, 2) + 0.2543 * steering_wheel_deg + 0.0182;
+  double delta_r_deg = 0.000410 * std::pow(steering_wheel_deg, 2) + 0.2554 * steering_wheel_deg + 0.0200;
+
+  // Deg to rad
+  delta_l_rad = delta_l_deg * (M_PI / 180.0);
+  delta_r_rad = delta_r_deg * (M_PI / 180.0);
 }
 
 inline int32_t Controller::convert_torque(double torque) {
