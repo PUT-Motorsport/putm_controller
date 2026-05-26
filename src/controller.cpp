@@ -454,18 +454,17 @@ inline int32_t Controller::convert_torque(double torque) {
 
 inline void Controller::estimate_velocity_ekf(double ax, double ay, double r, double w_fl, double w_fr, double w_rl, double w_rr, double delta_l, double delta_r, double &vx_est, double &vy_est) {
   
-  const double dt_ekf = 0.005; 
   const double c = 0.621;  
   const double b = 0.765;  
 
   // PREDYKCJA
   Eigen::Vector2d x_pred;
-  x_pred(0) = ekf_x(0) + (ax + ekf_x(1) * r) * dt_ekf;
-  x_pred(1) = ekf_x(1) + (ay - ekf_x(0) * r) * dt_ekf;
+  x_pred(0) = ekf_x(0) + (ax + ekf_x(1) * r) * dt;
+  x_pred(1) = ekf_x(1) + (ay - ekf_x(0) * r) * dt;
 
   Eigen::Matrix2d F;
-  F << 1.0,        r * dt_ekf,
-      -r * dt_ekf, 1.0;
+  F << 1.0,        r * dt,
+      -r * dt, 1.0;
 
   Eigen::Matrix2d P_pred = F * ekf_P * F.transpose() + ekf_Q;
 
