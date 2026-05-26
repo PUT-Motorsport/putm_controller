@@ -9,6 +9,7 @@ link_directories(/home/filip/software/acados/lib)
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(Eigen3 REQUIRED)
 find_package(putm_vcl_interfaces REQUIRED)
 find_package(putm_vcl REQUIRED)
 find_package(vectornav_msgs REQUIRED)
@@ -28,6 +29,8 @@ add_executable(controller
     src/putm_sim_gen/tv_nmpc_cost/tv_nmpc_cost_ext_cost_e_fun.c
     src/putm_sim_gen/tv_nmpc_cost/tv_nmpc_cost_ext_cost_e_fun_jac.c
     src/putm_sim_gen/tv_nmpc_cost/tv_nmpc_cost_ext_cost_e_fun_jac_hess.c
+    src/putm_sim_gen/tv_nmpc_constraints/tv_nmpc_constr_h_fun.c
+    src/putm_sim_gen/tv_nmpc_constraints/tv_nmpc_constr_h_fun_jac_uxt_zt.c
 )
 target_include_directories(
   controller
@@ -37,6 +40,7 @@ target_include_directories(
          /home/filip/software/acados/include
         /home/filip/software/acados/include/blasfeo/include
         /home/filip/software/acados/include/hpipm/include
+        ${EIGEN3_INCLUDE_DIRS}
         )
 
 target_link_libraries(controller acados hpipm blasfeo m)
