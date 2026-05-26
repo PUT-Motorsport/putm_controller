@@ -127,7 +127,6 @@ Controller::Controller()
       bms_hv_main_subscriber(this->create_subscription<BmsHvMain>("putm_vcl/bms_hv_main", 1,  std::bind(&Controller::bms_hv_main_callback, this, _1))),
       control_loop_timer(this->create_wall_timer(5ms, std::bind(&Controller::control_loop, this))),
       is_initialized(false),
-      previous_pos(0),
       speed_fl(0), speed_fr(0), speed_rl(0), speed_rr(0),
       ay(0.0), ax(0.0), yaw_rate(0.0), batt_curr(0.0),
       ax_filtered(0.0), ay_filtered(0.0), yaw_rate_filtered(0.0)
@@ -400,8 +399,8 @@ inline double Controller::convert_wheel_speed(double rpm) {
 inline void Controller::convert_steering_angle(double steering_wheel_deg, double &delta_l_rad, double &delta_r_rad) {
   
   // Wielomiany geometrii Ackermanna
-  double delta_l_deg = -0.0000942 * std::pow(steering_wheel_deg, 2) + 0.2543 * steering_wheel_deg + 0.0182;
-  double delta_r_deg = 0.000410 * std::pow(steering_wheel_deg, 2) + 0.2554 * steering_wheel_deg + 0.0200;
+  double delta_l_deg = -0.0000942 * steering_wheel_deg * steering_wheel_deg + 0.2543 * steering_wheel_deg + 0.0182;
+  double delta_r_deg = 0.000410 * steering_wheel_deg * steering_wheel_deg + 0.2554 * steering_wheel_deg + 0.0200;
 
   // Deg to rad
   delta_l_rad = delta_l_deg * (M_PI / 180.0);
