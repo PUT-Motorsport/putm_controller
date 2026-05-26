@@ -47,7 +47,6 @@ class Controller : public rclcpp::Node {
 
   inline double convert_pedal_position(int16_t pedal_position);
   inline double convert_brake_pressure(int16_t brake_pressure);
-  inline double convert_steering_wheel_position(int16_t steering_wheel_position);
   inline int32_t convert_torque(double torque);
   inline double convert_wheel_speed(double rpm);
   inline void convert_steering_angle(double steering_wheel_deg, double &delta_l_rad, double &delta_r_rad);
@@ -56,7 +55,6 @@ class Controller : public rclcpp::Node {
   
   // Stany
   bool is_initialized;
-  int16_t previous_pos;
   double speed_fl, speed_fr, speed_rl, speed_rr;
   double ay, ax, yaw_rate, batt_curr;
   Setpoints setpoints;
@@ -205,7 +203,7 @@ void Controller::control_loop() {
   bool enable_tc = true; 
 
   double pedal = convert_pedal_position(frontbox_driver_input.pedal_position);
-  double steering_angle_deg = convert_steering_wheel_position(frontbox_driver_input.steering_wheel_position);
+  double steering_angle_deg = frontbox_driver_input.steering_wheel_position;
 
   double w_fl = convert_wheel_speed(speed_fl);
   double w_fr = convert_wheel_speed(speed_fr);
@@ -392,15 +390,6 @@ inline double Controller::convert_brake_pressure(int16_t brake_pressure) {
   return brake_pressure;
 }
 
-inline double Controller::convert_steering_wheel_position(int16_t steering_wheel_position) {
-  if(previous_pos < -100 && steering_wheel_position > 100){
-    steering_wheel_position = -135;
-  }
-  previous_pos = steering_wheel_position;
-
-  
-  return steering_wheel_position;
-}
 
 inline double Controller::convert_wheel_speed(double rpm) {
   
