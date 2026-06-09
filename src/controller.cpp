@@ -91,8 +91,6 @@ class Controller : public rclcpp::Node {
   Eigen::Vector2d ekf_x;
   Eigen::Matrix2d ekf_P;
   Eigen::Matrix2d ekf_Q;
-  Eigen::MatrixXd ekf_R;
-  Eigen::MatrixXd ekf_H;
   Eigen::Matrix2d ekf_I;
 
   inline void estimate_velocity_ekf(double ax, double ay, double r, double w_fl, double w_fr, double w_rl, double w_rr, double delta_l, double delta_r, double &vx_est, double &vy_est);
@@ -148,21 +146,10 @@ Controller::Controller()
         integral_err[i] = 0.0;
       }
 
-      ekf_x << 1.0, 0.0;
-      ekf_P = Eigen::Matrix2d::Identity() * 1.0;
-      
-      ekf_Q = Eigen::Matrix2d::Identity();
-      ekf_Q(0,0) = 0.05; 
-      ekf_Q(1,1) = 0.1;
-      
-      ekf_R = Eigen::MatrixXd::Identity(5, 5) * 0.1;
-      ekf_R(4,4) = 0.5;
-      
-      ekf_H = Eigen::MatrixXd::Zero(5, 2);
-      ekf_H.col(0) << 1, 1, 1, 1, 0;
-      ekf_H.col(1) << 0, 0, 0, 0, 1;
-      
+      ekf_x << 0.0, 0.0;
+      ekf_P = Eigen::Matrix2d::Identity() * 0.1;
       ekf_I = Eigen::Matrix2d::Identity();
+
       }
 
 Controller::~Controller() {
@@ -441,61 +428,108 @@ inline int32_t Controller::convert_torque(double torque) {
 }
 
 inline void Controller::estimate_velocity_ekf(double ax, double ay, double r, double w_fl, double w_fr, double w_rl, double w_rr, double delta_l, double delta_r, double &vx_est, double &vy_est) {
-  
-  const double c = 0.621;  
-  const double b = 0.765;  
 
-  // PREDYKCJA
-  Eigen::Vector2d x_pred;
-  x_pred(0) = ekf_x(0) + (ax + ekf_x(1) * r) * dt;
-  x_pred(1) = ekf_x(1) + (ay - ekf_x(0) * r) * dt;
+    const double c   = 0.621;
+    const double b   = 0.765;
 
-  Eigen::Matrix2d F;
-  F << 1.0,        r * dt,
-      -r * dt, 1.0;
+    // Parametry 
+    const double q_vx      = 0.206283;
+    const double q_vy      = 0.00010;
+    const double r_wheels  = 0.005777;
+    const double r_yaw     = 0.007262;
+    const double r_zlvu    = 0.00969129;
+    const double ax_pen    = 0.006621;
 
-  Eigen::Matrix2d P_pred = F * ekf_P * F.transpose() + ekf_Q;
+    Eigen::Matrix2d Q;
+    Q << q_vx, 0.0,
+         0.0,  q_vy;
 
-  // KOREKCJA - zmianione pomiary, aby lepiej odzwierciedlały prędkość bazującą na kołach i pseudo-pomiarze vy z akceleracji bocznej
-  Eigen::VectorXd z(5);
-  z(0) = w_fl * R_e * cos(delta_l);
-  z(1) = w_fr * R_e * cos(delta_r);
-  z(2) = w_rl * R_e;
-  z(3) = w_rr * R_e;
-  z(4) = r * b; 
+    double delta = (delta_l + delta_r) / 2.0;
 
-  Eigen::VectorXd z_pred(5);
-  z_pred(0) = x_pred(0) - r * c;
-  z_pred(1) = x_pred(0) + r * c;
-  z_pred(2) = x_pred(0) - r * c;
-  z_pred(3) = x_pred(0) + r * c;
-  z_pred(4) = x_pred(1);
+    // PREDYKCJA
+    Eigen::Vector2d x_pred;
+    x_pred(0) = ekf_x(0) + (ax + ekf_x(1) * r) * dt;
+    x_pred(1) = ekf_x(1) + (ay - ekf_x(0) * r) * dt;
 
-  Eigen::VectorXd y = z - z_pred;
+    Eigen::Matrix2d F;
+    F << 1.0,      r * dt,
+        -r * dt,   1.0;
 
-  Eigen::MatrixXd R_adaptive = ekf_R;
-  double ax_penalty = std::abs(ax) * 0.5;
-  
-  for(int i = 0; i < 4; i++) {
-    double spike_penalty = 5.0 * (y(i) * y(i)); 
-    R_adaptive(i, i) += ax_penalty + spike_penalty;
-  } 
-  R_adaptive(4, 4) += std::abs(ay) * 0.2;
+    Eigen::Matrix2d P_pred = F * ekf_P * F.transpose() + Q;
 
-  Eigen::MatrixXd S = ekf_H * P_pred * ekf_H.transpose() + R_adaptive;
-  Eigen::MatrixXd K = P_pred * ekf_H.transpose() * S.inverse();
+    // POMIARY KÓŁ
+    Eigen::Vector4d z_wheels, z_pred_wheels;
+    z_wheels(0) = w_fl * R_e * std::cos(delta_l);
+    z_wheels(1) = w_fr * R_e * std::cos(delta_r);
+    z_wheels(2) = w_rl * R_e;
+    z_wheels(3) = w_rr * R_e;
 
-  ekf_x = x_pred + K * y;
-  ekf_P = (ekf_I - K * ekf_H) * P_pred;
+    z_pred_wheels(0) = x_pred(0) - r * c;
+    z_pred_wheels(1) = x_pred(0) + r * c;
+    z_pred_wheels(2) = x_pred(0) - r * c;
+    z_pred_wheels(3) = x_pred(0) + r * c;
 
-  // zabezpieczenie przed zerową prędkością
-  if (ekf_x(0) < 0.0) {
-    ekf_x(0) = 0.0;
-  }
+    Eigen::Vector4d y_wheels = z_wheels - z_pred_wheels;
 
-  vx_est = ekf_x(0);
-  vy_est = ekf_x(1);
+    // DETEKCJA TRYBU
+    double avg_wheel_speed = z_wheels.cwiseAbs().mean();
+    bool is_stopped  = (avg_wheel_speed < 0.1) && (x_pred(0) < 0.3);
+    bool is_straight = (std::abs(delta) < 0.03) && (std::abs(r) < 0.05);
+
+    Eigen::Matrix<double, 5, 1> z_full, z_pred_full;
+    z_full.head<4>()      = z_wheels;
+    z_pred_full.head<4>() = z_pred_wheels;
+    z_pred_full(4)        = x_pred(1);
+
+    Eigen::Matrix<double, 5, 2> H = Eigen::Matrix<double, 5, 2>::Zero();
+    H.col(0) << 1, 1, 1, 1, 0;
+    H.col(1) << 0, 0, 0, 0, 1;
+
+    Eigen::Matrix<double, 5, 5> R_adaptive = Eigen::Matrix<double, 5, 5>::Zero();
+
+    if (is_stopped) {
+        z_full(4)   = 0.0;
+        R_adaptive  = Eigen::Matrix<double, 5, 5>::Identity() * 1e-4;
+    } else {
+        // Koła: twarde odcięcie przy poślizgu > 50%
+        for (int i = 0; i < 4; i++) {
+            double slip = 0.0;
+            if (x_pred(0) > 1.0) {
+                slip = std::abs(y_wheels(i)) / x_pred(0);
+            }
+            if (slip > 0.5) {
+                R_adaptive(i, i) = 1e6;
+            } else {
+                R_adaptive(i, i) = r_wheels + std::abs(ax) * ax_pen;
+            }
+        }
+
+        // Pomiar boczny
+        if (is_straight) {
+            z_full(4)    = 0.0;
+            R_adaptive(4, 4) = r_zlvu;
+        } else {
+            z_full(4)    = r * b;
+            R_adaptive(4, 4) = r_yaw + std::abs(ay) * 0.2;
+        }
+    }
+
+    // KOREKCJA
+    Eigen::Matrix<double, 5, 1> y = z_full - z_pred_full;
+
+    Eigen::Matrix<double, 5, 5> S = H * P_pred * H.transpose() + R_adaptive;
+    Eigen::Matrix<double, 2, 5> K = P_pred * H.transpose() * S.inverse();
+
+    ekf_x = x_pred + K * y;
+    ekf_P = (ekf_I - K * H) * P_pred;
+
+    // ZABEZPIECZENIA
+    if (ekf_x(0) < 0.0) ekf_x(0) = 0.0;
+
+    vx_est = ekf_x(0);
+    vy_est = std::tanh(ekf_x(1) / 2.0);
 }
+
 
 inline double Controller::calculate_wheel_base_velocity(double w_fl, double w_fr, double w_rl, double w_rr, double delta_l, double delta_r) {
   double v_fl = w_fl * R_e * cos(delta_l);
