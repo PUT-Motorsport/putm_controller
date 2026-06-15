@@ -9,6 +9,7 @@
   
   <depend>putm_vcl_interfaces</depend>
   <depend>vectornav</depend>
+  <depend>putm_vcl</depend>
 
 
   <buildtool_depend>ament_cmake</buildtool_depend>
