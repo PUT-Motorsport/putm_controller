@@ -3,10 +3,11 @@
 #include "putm_vcl_interfaces/msg/setpoints.hpp"
 #include "putm_vcl_interfaces/msg/amk_actual_values1.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "putm_vcl_interfaces/msg/xsens_acceleration.hpp"
-#include "putm_vcl_interfaces/msg/xsens_rate_of_turn.hpp"
+// #include "putm_vcl_interfaces/msg/xsens_acceleration.hpp"
+// #include "putm_vcl_interfaces/msg/xsens_rate_of_turn.hpp"
 #include "putm_vcl_interfaces/msg/yaw_ref.hpp"
 #include "vectornav_msgs/msg/imu_group.hpp"
+#include "geometry_msgs/msg/vector3_stamped.hpp"
 #include <Eigen/Dense>
 
 #define MAX_MOMENT  185.25
@@ -38,9 +39,13 @@ class Controller : public rclcpp::Node {
   rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_front_right_actual_values1_subscriber;
   rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_rear_left_actual_values1_subscriber;
   rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_rear_right_actual_values1_subscriber;
-  rclcpp::Subscription<XsensAcceleration>::SharedPtr xsens_acceleration_ay_subscriber;
-  rclcpp::Subscription<XsensAcceleration>::SharedPtr xsens_acceleration_ax_subscriber;
-  rclcpp::Subscription<XsensRateOfTurn>::SharedPtr xsens_rate_of_turn_subscriber;
+
+  // rclcpp::Subscription<XsensAcceleration>::SharedPtr xsens_acceleration_ay_subscriber;
+  // rclcpp::Subscription<XsensAcceleration>::SharedPtr xsens_acceleration_ax_subscriber;
+  // rclcpp::Subscription<XsensRateOfTurn>::SharedPtr xsens_rate_of_turn_subscriber;
+  rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr xsens_acceleration_subscriber;
+  rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr xsens_angular_velocity_subscriber;
+
   rclcpp::Subscription<vectornav_msgs::msg::ImuGroup>::SharedPtr vn300_rate_of_turn_subscriber;
   rclcpp::Subscription<BmsHvMain>::SharedPtr bms_hv_main_subscriber;
   rclcpp::TimerBase::SharedPtr control_loop_timer;
@@ -62,7 +67,7 @@ class Controller : public rclcpp::Node {
 
   // Filtr
   double ax_filtered, ay_filtered, yaw_rate_filtered;
-  const double lp_alpha_acc = 0.6;
+  const double lp_alpha_acc = 0.4;
 
   // Wskaźniki i bufory ACADOS
   tv_nmpc_solver_capsule *acados_capsule;
@@ -100,9 +105,13 @@ class Controller : public rclcpp::Node {
   void amk_actual_values2_callback(const AmkActualValues1 msg);
   void amk_actual_values3_callback(const AmkActualValues1 msg);
   void amk_actual_values4_callback(const AmkActualValues1 msg);
-  void xsens_acceleration_ay_callback(const XsensAcceleration msg);
-  void xsens_acceleration_ax_callback(const XsensAcceleration msg);
-  void xsens_rate_of_turn_callback(const XsensRateOfTurn msg);
+  
+  // void xsens_acceleration_ay_callback(const XsensAcceleration msg);
+  // void xsens_acceleration_ax_callback(const XsensAcceleration msg);
+  // void xsens_rate_of_turn_callback(const XsensRateOfTurn msg);
+  void xsens_acceleration_callback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg);
+  void xsens_angular_velocity_callback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg);
+
   void vn300_rate_of_turn_callback(const vectornav_msgs::msg::ImuGroup msg);
   void bms_hv_main_callback(const BmsHvMain msg);
 
@@ -118,9 +127,11 @@ Controller::Controller()
       amk_front_right_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/front/right/actual_values1", 1, std::bind(&Controller::amk_actual_values2_callback, this, _1))),
       amk_rear_left_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/rear/left/actual_values1", 1, std::bind(&Controller::amk_actual_values3_callback, this, _1))),
       amk_rear_right_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/rear/right/actual_values1", 1, std::bind(&Controller::amk_actual_values4_callback, this, _1))),
-      xsens_acceleration_ay_subscriber(this->create_subscription<XsensAcceleration>("putm_vcl/xsens_acceleration", 1, std::bind(&Controller::xsens_acceleration_ay_callback, this, _1))),
-      xsens_acceleration_ax_subscriber(this->create_subscription<XsensAcceleration>("putm_vcl/xsens_acceleration", 1, std::bind(&Controller::xsens_acceleration_ax_callback, this, _1))),
-      xsens_rate_of_turn_subscriber(this->create_subscription<XsensRateOfTurn>("putm_vcl/xsens_rate_of_turn", 1, std::bind(&Controller::xsens_rate_of_turn_callback, this, _1))),
+      // xsens_acceleration_ay_subscriber(this->create_subscription<XsensAcceleration>("putm_vcl/xsens_acceleration", 1, std::bind(&Controller::xsens_acceleration_ay_callback, this, _1))),
+      // xsens_acceleration_ax_subscriber(this->create_subscription<XsensAcceleration>("putm_vcl/xsens_acceleration", 1, std::bind(&Controller::xsens_acceleration_ax_callback, this, _1))),
+      // xsens_rate_of_turn_subscriber(this->create_subscription<XsensRateOfTurn>("putm_vcl/xsens_rate_of_turn", 1, std::bind(&Controller::xsens_rate_of_turn_callback, this, _1))),
+      xsens_acceleration_subscriber(this->create_subscription<geometry_msgs::msg::Vector3Stamped>("/imu/acceleration", 1, std::bind(&Controller::xsens_acceleration_callback, this, _1))),
+      xsens_angular_velocity_subscriber(this->create_subscription<geometry_msgs::msg::Vector3Stamped>("/imu/angular_velocity", 1, std::bind(&Controller::xsens_angular_velocity_callback, this, _1))),
       vn300_rate_of_turn_subscriber(this->create_subscription<vectornav_msgs::msg::ImuGroup>("vectornav/raw/imu", 1,  std::bind(&Controller::vn300_rate_of_turn_callback, this, _1))),
       bms_hv_main_subscriber(this->create_subscription<BmsHvMain>("putm_vcl/bms_hv_main", 1,  std::bind(&Controller::bms_hv_main_callback, this, _1))),
       control_loop_timer(this->create_wall_timer(5ms, std::bind(&Controller::control_loop, this))),
@@ -163,20 +174,35 @@ void Controller::amk_actual_values2_callback(const AmkActualValues1 msg) { speed
 void Controller::amk_actual_values3_callback(const AmkActualValues1 msg) { speed_rl = abs(msg.actual_velocity); }
 void Controller::amk_actual_values4_callback(const AmkActualValues1 msg) { speed_rr = abs(msg.actual_velocity); }
 
-void Controller::xsens_acceleration_ay_callback(const XsensAcceleration msg) { (void)msg; /* ay = msg.acc_y; */ }
-void Controller::xsens_acceleration_ax_callback(const XsensAcceleration msg) { (void)msg; /* ax = msg.acc_x; */ }
-void Controller::xsens_rate_of_turn_callback(const XsensRateOfTurn msg) { (void)msg; /* yaw_rate = msg.gyr_z; */ }
+// void Controller::xsens_acceleration_ay_callback(const XsensAcceleration msg) { (void)msg; /* ay = msg.acc_y; */ }
+// void Controller::xsens_acceleration_ax_callback(const XsensAcceleration msg) { (void)msg; /* ax = msg.acc_x; */ }
+// void Controller::xsens_rate_of_turn_callback(const XsensRateOfTurn msg) { (void)msg; /* yaw_rate = msg.gyr_z; */ }
 
-void Controller::vn300_rate_of_turn_callback(const vectornav_msgs::msg::ImuGroup msg) {
-  double ax_raw = msg.accel.x * -1;
-  double ay_raw = msg.accel.y * -1;
-  yaw_rate = msg.angularrate.z;
+void Controller::xsens_acceleration_callback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg) {
+  double ax_raw = msg->vector.x;
+  double ay_raw = msg->vector.y;
 
   ax_filtered = lp_alpha_acc * ax_raw  + (1.0 - lp_alpha_acc) * ax_filtered;
   ay_filtered = lp_alpha_acc * ay_raw  + (1.0 - lp_alpha_acc) * ay_filtered;
 
   ax = ax_filtered;
   ay = ay_filtered;
+}
+
+void Controller::xsens_angular_velocity_callback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg) {
+  yaw_rate = msg->vector.z;
+}
+
+void Controller::vn300_rate_of_turn_callback(const vectornav_msgs::msg::ImuGroup msg) {
+  // double ax_raw = msg.accel.x * -1;
+  // double ay_raw = msg.accel.y * -1;
+  // yaw_rate = msg.angularrate.z;
+
+  // ax_filtered = lp_alpha_acc * ax_raw  + (1.0 - lp_alpha_acc) * ax_filtered;
+  // ay_filtered = lp_alpha_acc * ay_raw  + (1.0 - lp_alpha_acc) * ay_filtered;
+
+  // ax = ax_filtered;
+  // ay = ay_filtered;
 }
 
 void Controller::bms_hv_main_callback(const BmsHvMain msg) { batt_curr = msg.current; }
@@ -355,8 +381,8 @@ void Controller::control_loop() {
 
   // Publikacja 
   yaw_ref.yaw_rate_ref = yaw_rate; 
-  yaw_ref.vx_est = vx_est * -1.0;
-  yaw_ref.vy_est = vy_est * -1.0;
+  yaw_ref.vx_est = ax;
+  yaw_ref.vy_est = ay;
   yaw_rate_ref_publisher->publish(yaw_ref);
 
   setpoints.front_left.torque = convert_torque(tau_final[0]);
