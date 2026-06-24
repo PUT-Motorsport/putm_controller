@@ -381,8 +381,10 @@ void Controller::control_loop() {
 
   // Publikacja 
   yaw_ref.yaw_rate_ref = yaw_rate; 
-  yaw_ref.vx_est = ax;
-  yaw_ref.vy_est = ay;
+  yaw_ref.vx_est = vx_est;
+  yaw_ref.vy_est = vy_est;
+  yaw_ref.filtered_ax = ax_filtered;
+  yaw_ref.filtered_ay = ay_filtered;
   yaw_rate_ref_publisher->publish(yaw_ref);
 
   setpoints.front_left.torque = convert_torque(tau_final[0]);
