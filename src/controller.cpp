@@ -10,7 +10,7 @@
 #include "geometry_msgs/msg/vector3_stamped.hpp"
 #include <Eigen/Dense>
 
-#define MAX_MOMENT  185.25
+#define MAX_MOMENT  4 * 11 * 13 // 4 silniki * 11 redukcja * 13 moment nominalny silnika
 
 
 extern "C" {
@@ -46,7 +46,7 @@ class Controller : public rclcpp::Node {
   rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr xsens_acceleration_subscriber;
   rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr xsens_angular_velocity_subscriber;
 
-  rclcpp::Subscription<vectornav_msgs::msg::ImuGroup>::SharedPtr vn300_rate_of_turn_subscriber;
+  // rclcpp::Subscription<vectornav_msgs::msg::ImuGroup>::SharedPtr vn300_rate_of_turn_subscriber;
   rclcpp::Subscription<BmsHvMain>::SharedPtr bms_hv_main_subscriber;
   rclcpp::TimerBase::SharedPtr control_loop_timer;
 
@@ -66,8 +66,17 @@ class Controller : public rclcpp::Node {
   YawRef yaw_ref;
 
   // Filtr
-  double ax_filtered, ay_filtered, yaw_rate_filtered;
-  const double lp_alpha_acc = 0.4;
+  double ax_raw_prev1 = 0.0, ax_raw_prev2 = 0.0;
+  double ax_filt_prev1 = 0.0, ax_filt_prev2 = 0.0;
+
+  double ay_raw_prev1 = 0.0, ay_raw_prev2 = 0.0;
+  double ay_filt_prev1 = 0.0, ay_filt_prev2 = 0.0;
+
+  const double b0 = 0.00554272;
+  const double b1 = 0.01108543;
+  const double b2 = 0.00554272;
+  const double a1 = -1.77863178;
+  const double a2 = 0.80080265;
 
   // Wskaźniki i bufory ACADOS
   tv_nmpc_solver_capsule *acados_capsule;
@@ -84,6 +93,7 @@ class Controller : public rclcpp::Node {
   // TC
   double integral_err[4];
   double tau_final[4];
+  double prev_tau_nmpc[4];
 
   // Parametry TC
   const double R_e = 0.193;
@@ -132,13 +142,12 @@ Controller::Controller()
       // xsens_rate_of_turn_subscriber(this->create_subscription<XsensRateOfTurn>("putm_vcl/xsens_rate_of_turn", 1, std::bind(&Controller::xsens_rate_of_turn_callback, this, _1))),
       xsens_acceleration_subscriber(this->create_subscription<geometry_msgs::msg::Vector3Stamped>("/imu/acceleration", 1, std::bind(&Controller::xsens_acceleration_callback, this, _1))),
       xsens_angular_velocity_subscriber(this->create_subscription<geometry_msgs::msg::Vector3Stamped>("/imu/angular_velocity", 1, std::bind(&Controller::xsens_angular_velocity_callback, this, _1))),
-      vn300_rate_of_turn_subscriber(this->create_subscription<vectornav_msgs::msg::ImuGroup>("vectornav/raw/imu", 1,  std::bind(&Controller::vn300_rate_of_turn_callback, this, _1))),
+      // vn300_rate_of_turn_subscriber(this->create_subscription<vectornav_msgs::msg::ImuGroup>("vectornav/raw/imu", 1,  std::bind(&Controller::vn300_rate_of_turn_callback, this, _1))),
       bms_hv_main_subscriber(this->create_subscription<BmsHvMain>("putm_vcl/bms_hv_main", 1,  std::bind(&Controller::bms_hv_main_callback, this, _1))),
       control_loop_timer(this->create_wall_timer(5ms, std::bind(&Controller::control_loop, this))),
       is_initialized(false),
       speed_fl(0), speed_fr(0), speed_rl(0), speed_rr(0),
-      ay(0.0), ax(0.0), yaw_rate(0.0), batt_curr(0.0),
-      ax_filtered(0.0), ay_filtered(0.0), yaw_rate_filtered(0.0)
+      ay(0.0), ax(0.0), yaw_rate(0.0), batt_curr(0.0)
       {
 
       acados_capsule = tv_nmpc_acados_create_capsule();
@@ -155,6 +164,7 @@ Controller::Controller()
       for (int i = 0; i < 4; i++) {
         tau_final[i] = 0.0;
         integral_err[i] = 0.0;
+        prev_tau_nmpc[i] = 0.0;
       }
 
       ekf_x << 0.0, 0.0;
@@ -182,11 +192,19 @@ void Controller::xsens_acceleration_callback(const geometry_msgs::msg::Vector3St
   double ax_raw = msg->vector.x;
   double ay_raw = msg->vector.y;
 
-  ax_filtered = lp_alpha_acc * ax_raw  + (1.0 - lp_alpha_acc) * ax_filtered;
-  ay_filtered = lp_alpha_acc * ay_raw  + (1.0 - lp_alpha_acc) * ay_filtered;
+  ax = b0*ax_raw + b1*ax_raw_prev1 + b2*ax_raw_prev2 - a1*ax_filt_prev1 - a2*ax_filt_prev2;
 
-  ax = ax_filtered;
-  ay = ay_filtered;
+  ay = b0*ay_raw + b1*ay_raw_prev1 + b2*ay_raw_prev2 - a1*ay_filt_prev1 - a2*ay_filt_prev2;
+
+  ax_raw_prev2 = ax_raw_prev1;
+  ax_raw_prev1 = ax_raw;
+  ax_filt_prev2 = ax_filt_prev1;
+  ax_filt_prev1 = ax;
+
+  ay_raw_prev2 = ay_raw_prev1;
+  ay_raw_prev1 = ay_raw;
+  ay_filt_prev2 = ay_filt_prev1;
+  ay_filt_prev1 = ay;
 }
 
 void Controller::xsens_angular_velocity_callback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg) {
@@ -229,27 +247,32 @@ void Controller::control_loop() {
   double vx_est = 1.0;
   double vy_est = 0.0;
   estimate_velocity_ekf(ax, ay, yaw_rate, w_fl, w_fr, w_rl, w_rr, delta_l_rad, delta_r_rad, vx_est, vy_est);
+  double fz_fl = 0.0, fz_fr = 0.0, fz_rl = 0.0, fz_rr = 0.0;
 
   // Low speed mode: poniżej 1 m/s, bez NMPC, bez TC, tylko mapowanie pedału na moment
   if (vx_est < 1.0) {
     RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, 
         "Low-Speed Mode (vx = %.2f). Bypassing NMPC.", vx_est);
 
-    double manual_torque = pedal * MAX_MOMENT;
+    double manual_torque = pedal * MAX_MOMENT / 4.0;
 
     tau_final[0] = manual_torque;
     tau_final[1] = manual_torque;
     tau_final[2] = manual_torque;
     tau_final[3] = manual_torque;
 
+    prev_tau_nmpc[0] = manual_torque;
+    prev_tau_nmpc[1] = manual_torque;
+    prev_tau_nmpc[2] = manual_torque;
+    prev_tau_nmpc[3] = manual_torque;
+
     is_initialized = false;
   } 
   // NMPC mode: Prędkość powyżej 1.0 m/s, pełne wektorowanie i Traction Control
   else {
-    double fz_fl, fz_fr, fz_rl, fz_rr;
     calculate_load_transfer(ax, ay, fz_fl, fz_fr, fz_rl, fz_rr);
 
-    double t_ref = pedal * MAX_MOMENT * 4; 
+    double t_ref = pedal * MAX_MOMENT; 
 
     // Nadpisanie parametrów bufora P dla wszystkich kroków horyzontu
     p_val[0] = yaw_rate; 
@@ -275,10 +298,10 @@ void Controller::control_loop() {
     lbx0[6] = w_rr; ubx0[6] = w_rr;
     
     // Feedback stanów wewnętrznych
-    lbx0[7] = tau_final[0]; ubx0[7] = tau_final[0];
-    lbx0[8] = tau_final[1]; ubx0[8] = tau_final[1];
-    lbx0[9] = tau_final[2]; ubx0[9] = tau_final[2];
-    lbx0[10]= tau_final[3]; ubx0[10]= tau_final[3];
+    lbx0[7] = prev_tau_nmpc[0]; ubx0[7] = prev_tau_nmpc[0];
+    lbx0[8] = prev_tau_nmpc[1]; ubx0[8] = prev_tau_nmpc[1];
+    lbx0[9] = prev_tau_nmpc[2]; ubx0[9] = prev_tau_nmpc[2];
+    lbx0[10]= prev_tau_nmpc[3]; ubx0[10]= prev_tau_nmpc[3];
 
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "lbx", lbx0);
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "ubx", ubx0);
@@ -310,6 +333,12 @@ void Controller::control_loop() {
 
     if (status != 0) {
       RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 500, "NMPC Fail (Status: %d). Failsafe aktywny.", status);
+      is_initialized = false;
+
+      for (int i = 0; i < 4; i++) {
+        prev_tau_nmpc[i] = 0.0;
+        tau_final[i] = 0.0;
+    }
       
       // FAILSAFE
       double x_reset[TV_NMPC_NX] = {vx_est, vy_est, yaw_rate, w_fl, w_fr, w_rl, w_rr, 0.0, 0.0, 0.0, 0.0};
@@ -338,10 +367,10 @@ void Controller::control_loop() {
 
       // Pobranie zoptymalizowanych momentów
       ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, 1, "x", x_k1);
-      tau_nmpc[0] = x_k1[7]; 
-      tau_nmpc[1] = x_k1[8]; 
-      tau_nmpc[2] = x_k1[9]; 
-      tau_nmpc[3] = x_k1[10];
+      prev_tau_nmpc[0] = x_k1[7]; 
+      prev_tau_nmpc[1] = x_k1[8]; 
+      prev_tau_nmpc[2] = x_k1[9]; 
+      prev_tau_nmpc[3] = x_k1[10];
 
       // TC
       double w_actual[4] = {w_fl, w_fr, w_rl, w_rr};
@@ -361,12 +390,12 @@ void Controller::control_loop() {
             tau_tc = 0.0;
           }
 
-          tau_final[i] = tau_nmpc[i] - tau_tc;
+          tau_final[i] = prev_tau_nmpc[i] - tau_tc;
           if (tau_final[i] < 0.0) tau_final[i] = 0.0;
         } 
         else {
           integral_err[i] = 0.0;
-          tau_final[i] = tau_nmpc[i]; 
+          tau_final[i] = prev_tau_nmpc[i];
         }
       }
     }
@@ -383,8 +412,12 @@ void Controller::control_loop() {
   yaw_ref.yaw_rate_ref = yaw_rate; 
   yaw_ref.vx_est = vx_est;
   yaw_ref.vy_est = vy_est;
-  yaw_ref.filtered_ax = ax_filtered;
-  yaw_ref.filtered_ay = ay_filtered;
+  yaw_ref.filtered_ax = ax;
+  yaw_ref.filtered_ay = ay;
+  yaw_ref.fz_fl = fz_fl;
+  yaw_ref.fz_fr = fz_fr;
+  yaw_ref.fz_rl = fz_rl;
+  yaw_ref.fz_rr = fz_rr;
   yaw_rate_ref_publisher->publish(yaw_ref);
 
   setpoints.front_left.torque = convert_torque(tau_final[0]);
@@ -407,7 +440,7 @@ inline double Controller::convert_brake_pressure(int16_t brake_pressure) {
 
 inline double Controller::convert_wheel_speed(double rpm) {
   
-  double gear_ratio = 14.25; 
+  double gear_ratio = 11; 
   return (rpm * (M_PI / 30.0)) / gear_ratio;
 }
 
@@ -452,7 +485,7 @@ inline void Controller::calculate_load_transfer(double ax_sensor, double ay_sens
 
 inline int32_t Controller::convert_torque(double torque) {
   static constexpr double TORQUE_SCALER = 1000.0;
-  return (int32_t)(torque / MAX_MOMENT * TORQUE_SCALER);
+  return (int32_t)((torque / 143) * TORQUE_SCALER);
 }
 
 inline void Controller::estimate_velocity_ekf(double ax, double ay, double r, double w_fl, double w_fr, double w_rl, double w_rr, double delta_l, double delta_r, double &vx_est, double &vy_est) {
