@@ -250,7 +250,7 @@ void Controller::control_loop() {
   double fz_fl = 0.0, fz_fr = 0.0, fz_rl = 0.0, fz_rr = 0.0;
 
   // Low speed mode: poniżej 1 m/s, bez NMPC, bez TC, tylko mapowanie pedału na moment
-  if (vx_est < 1.0) {
+  if (vx_est < 100.0) {
     RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, 
         "Low-Speed Mode (vx = %.2f). Bypassing NMPC.", vx_est);
 

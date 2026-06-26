@@ -2,10 +2,10 @@ cmake_minimum_required(VERSION 3.8)
 project(putm_controller)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
+  add_compile_options(-Wall -Wextra -Wpedantic -O2)
 endif()
 
-link_directories(/home/filip/software/acados/lib)
+link_directories(/home/putm/acados/lib)
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -37,9 +37,9 @@ target_include_directories(
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
          $<INSTALL_INTERFACE:include>
          $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/putm_sim_gen>
-         /home/filip/software/acados/include
-        /home/filip/software/acados/include/blasfeo/include
-        /home/filip/software/acados/include/hpipm/include
+         /home/putm/acados/include
+         /home/putm/acados/include/blasfeo/include
+         /home/putm/acados/include/hpipm/include
         ${EIGEN3_INCLUDE_DIRS}
         )
 
