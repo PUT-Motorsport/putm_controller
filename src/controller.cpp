@@ -3,15 +3,17 @@
 #include "putm_vcl_interfaces/msg/setpoints.hpp"
 #include "putm_vcl_interfaces/msg/amk_actual_values1.hpp"
 #include "rclcpp/rclcpp.hpp"
-// #include "putm_vcl_interfaces/msg/xsens_acceleration.hpp"
-// #include "putm_vcl_interfaces/msg/xsens_rate_of_turn.hpp"
 #include "putm_vcl_interfaces/msg/yaw_ref.hpp"
-#include "vectornav_msgs/msg/imu_group.hpp"
 #include "geometry_msgs/msg/vector3_stamped.hpp"
 #include <Eigen/Dense>
 
-#define MAX_MOMENT  4 * 11 * 13 // 4 silniki * 11 redukcja * 13 moment nominalny silnika
+// #include "putm_vcl_interfaces/msg/xsens_acceleration.hpp"
+// #include "putm_vcl_interfaces/msg/xsens_rate_of_turn.hpp"
+// #include "vectornav_msgs/msg/imu_group.hpp"
 
+constexpr double MAX_MOMENT = 4 * 9.8 * 13;
+constexpr double Ku = 1.0/25.0;
+constexpr bool enable_tc = true;
 
 extern "C" {
 #include "acados_solver_tv_nmpc.h"
@@ -51,12 +53,11 @@ class Controller : public rclcpp::Node {
   rclcpp::TimerBase::SharedPtr control_loop_timer;
 
   inline double convert_pedal_position(int16_t pedal_position);
-  inline double convert_brake_pressure(int16_t brake_pressure);
   inline int32_t convert_torque(double torque);
   inline double convert_wheel_speed(double rpm);
   inline void convert_steering_angle(double steering_wheel_deg, double &delta_l_rad, double &delta_r_rad);
   inline void calculate_load_transfer(double ax, double ay, double &fz_fl, double &fz_fr, double &fz_rl, double &fz_rr);
-  inline double calculate_wheel_base_velocity(double w_fl, double w_fr, double w_rl, double w_rr, double delta_l, double delta_r);
+  inline double referenceYawRate(double vx, double delta_deg);
   
   // Stany
   bool is_initialized;
@@ -122,7 +123,7 @@ class Controller : public rclcpp::Node {
   void xsens_acceleration_callback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg);
   void xsens_angular_velocity_callback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg);
 
-  void vn300_rate_of_turn_callback(const vectornav_msgs::msg::ImuGroup msg);
+  // void vn300_rate_of_turn_callback(const vectornav_msgs::msg::ImuGroup msg);
   void bms_hv_main_callback(const BmsHvMain msg);
 
   void control_loop();
@@ -141,9 +142,10 @@ Controller::Controller()
       // xsens_acceleration_ax_subscriber(this->create_subscription<XsensAcceleration>("putm_vcl/xsens_acceleration", 1, std::bind(&Controller::xsens_acceleration_ax_callback, this, _1))),
       // xsens_rate_of_turn_subscriber(this->create_subscription<XsensRateOfTurn>("putm_vcl/xsens_rate_of_turn", 1, std::bind(&Controller::xsens_rate_of_turn_callback, this, _1))),
       xsens_acceleration_subscriber(this->create_subscription<geometry_msgs::msg::Vector3Stamped>("/imu/acceleration", 1, std::bind(&Controller::xsens_acceleration_callback, this, _1))),
-      xsens_angular_velocity_subscriber(this->create_subscription<geometry_msgs::msg::Vector3Stamped>("/imu/angular_velocity", 1, std::bind(&Controller::xsens_angular_velocity_callback, this, _1))),      // vn300_rate_of_turn_subscriber(this->create_subscription<vectornav_msgs::msg::ImuGroup>("vectornav/raw/imu", 1,  std::bind(&Controller::vn300_rate_of_turn_callback, this, _1))),
+      xsens_angular_velocity_subscriber(this->create_subscription<geometry_msgs::msg::Vector3Stamped>("/imu/angular_velocity", 1, std::bind(&Controller::xsens_angular_velocity_callback, this, _1))),      
+      // vn300_rate_of_turn_subscriber(this->create_subscription<vectornav_msgs::msg::ImuGroup>("vectornav/raw/imu", 1,  std::bind(&Controller::vn300_rate_of_turn_callback, this, _1))),
       bms_hv_main_subscriber(this->create_subscription<BmsHvMain>("putm_vcl/bms_hv_main", 1,  std::bind(&Controller::bms_hv_main_callback, this, _1))),
-      control_loop_timer(this->create_wall_timer(5ms, std::bind(&Controller::control_loop, this))),
+      control_loop_timer(this->create_wall_timer(10ms, std::bind(&Controller::control_loop, this))),
       is_initialized(false),
       speed_fl(0), speed_fr(0), speed_rl(0), speed_rr(0),
       ay(0.0), ax(0.0), yaw_rate(0.0), batt_curr(0.0)
@@ -188,8 +190,8 @@ void Controller::amk_actual_values4_callback(const AmkActualValues1 msg) { speed
 // void Controller::xsens_rate_of_turn_callback(const XsensRateOfTurn msg) { (void)msg; /* yaw_rate = msg.gyr_z; */ }
 
 void Controller::xsens_acceleration_callback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg) {
-  double ax_raw = msg->vector.x;
-  double ay_raw = msg->vector.y;
+  double ax_raw = msg->vector.y;
+  double ay_raw = -msg->vector.x;
 
   ax = b0*ax_raw + b1*ax_raw_prev1 + b2*ax_raw_prev2 - a1*ax_filt_prev1 - a2*ax_filt_prev2;
 
@@ -210,17 +212,17 @@ void Controller::xsens_angular_velocity_callback(const geometry_msgs::msg::Vecto
   yaw_rate = msg->vector.z;
 }
 
-void Controller::vn300_rate_of_turn_callback(const vectornav_msgs::msg::ImuGroup msg) {
-  // double ax_raw = msg.accel.x * -1;
-  // double ay_raw = msg.accel.y * -1;
-  // yaw_rate = msg.angularrate.z;
+// void Controller::vn300_rate_of_turn_callback(const vectornav_msgs::msg::ImuGroup msg) {
+//   // double ax_raw = msg.accel.x * -1;
+//   // double ay_raw = msg.accel.y * -1;
+//   // yaw_rate = msg.angularrate.z;
 
-  // ax_filtered = lp_alpha_acc * ax_raw  + (1.0 - lp_alpha_acc) * ax_filtered;
-  // ay_filtered = lp_alpha_acc * ay_raw  + (1.0 - lp_alpha_acc) * ay_filtered;
+//   // ax_filtered = lp_alpha_acc * ax_raw  + (1.0 - lp_alpha_acc) * ax_filtered;
+//   // ay_filtered = lp_alpha_acc * ay_raw  + (1.0 - lp_alpha_acc) * ay_filtered;
 
-  // ax = ax_filtered;
-  // ay = ay_filtered;
-}
+//   // ax = ax_filtered;
+//   // ay = ay_filtered;
+// }
 
 void Controller::bms_hv_main_callback(const BmsHvMain msg) { batt_curr = msg.current; }
 
@@ -228,8 +230,6 @@ void Controller::bms_hv_main_callback(const BmsHvMain msg) { batt_curr = msg.cur
 
 void Controller::control_loop() {
   auto start_time = std::chrono::high_resolution_clock::now();
-  
-  bool enable_tc = true; 
 
   double pedal = convert_pedal_position(frontbox_driver_input.pedal_position);
   double steering_angle_deg = frontbox_driver_input.steering_wheel_position;
@@ -246,12 +246,13 @@ void Controller::control_loop() {
   double vx_est = 1.0;
   double vy_est = 0.0;
   estimate_velocity_ekf(ax, ay, yaw_rate, w_fl, w_fr, w_rl, w_rr, delta_l_rad, delta_r_rad, vx_est, vy_est);
+  double delta_avg_rad = (delta_l_rad + delta_r_rad);
+  double yaw_rate_ref = referenceYawRate(vx_est, delta_avg_rad * 180.0 / M_PI);
   double fz_fl = 0.0, fz_fr = 0.0, fz_rl = 0.0, fz_rr = 0.0;
+  calculate_load_transfer(ax, ay, fz_fl, fz_fr, fz_rl, fz_rr);
 
-  // Low speed mode: poniżej 1 m/s, bez NMPC, bez TC, tylko mapowanie pedału na moment
+  // Low speed mode z manualnym sterowaniem momentem
   if (vx_est < 150.0) {
-    //RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, 
-    //    "Low-Speed Mode (vx = %.2f). Bypassing NMPC.", vx_est);
 
     double manual_torque = pedal * MAX_MOMENT / 4.0;
 
@@ -269,12 +270,11 @@ void Controller::control_loop() {
   } 
   // NMPC mode: Prędkość powyżej 1.0 m/s, pełne wektorowanie i Traction Control
   else {
-    calculate_load_transfer(ax, ay, fz_fl, fz_fr, fz_rl, fz_rr);
 
     double t_ref = pedal * MAX_MOMENT; 
 
     // Nadpisanie parametrów bufora P dla wszystkich kroków horyzontu
-    p_val[0] = yaw_rate; 
+    p_val[0] = yaw_rate_ref; 
     p_val[1] = delta_l_rad;
     p_val[2] = delta_r_rad;
     p_val[3] = fz_fl;
@@ -328,7 +328,6 @@ void Controller::control_loop() {
     RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 500, 
         "Czas NMPC: %.3f ms | Status: %d", elapsed_ms.count(), status);
     
-    double tau_nmpc[4] = {0.0, 0.0, 0.0, 0.0};
 
     if (status != 0) {
       RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 500, "NMPC Fail (Status: %d). Failsafe aktywny.", status);
@@ -408,7 +407,7 @@ void Controller::control_loop() {
   }
 
   // Publikacja 
-  yaw_ref.yaw_rate_ref = yaw_rate; 
+  yaw_ref.yaw_rate_ref = yaw_rate_ref; 
   yaw_ref.vx_est = vx_est;
   yaw_ref.vy_est = vy_est;
   yaw_ref.filtered_ax = ax;
@@ -431,16 +430,24 @@ inline double Controller::convert_pedal_position(int16_t pedal_position) {
   return (((double)pedal_position) / PEDAL_SCALER);
 }
 
-inline double Controller::convert_brake_pressure(int16_t brake_pressure) {
-
-  return brake_pressure;
-}
-
 
 inline double Controller::convert_wheel_speed(double rpm) {
   
   double gear_ratio = 11; 
   return (rpm * (M_PI / 30.0)) / gear_ratio;
+}
+
+inline double Controller::referenceYawRate(double vx, double delta_deg)
+{
+    const double delta_wheel = (delta_deg * M_PI / 180.0);
+    const double denominator = 1.53 * (1.0 + Ku * vx * vx);
+
+    if (std::fabs(denominator) < 1e-6)
+        return 0.0;
+
+    const double yaw_rate = vx * delta_wheel / denominator;
+
+    return std::clamp(yaw_rate, -4.0, 4.0);
 }
 
 inline void Controller::convert_steering_angle(double steering_wheel_deg, double &delta_l_rad, double &delta_r_rad) {
@@ -591,17 +598,6 @@ inline void Controller::estimate_velocity_ekf(double ax, double ay, double r, do
 }
 
 
-inline double Controller::calculate_wheel_base_velocity(double w_fl, double w_fr, double w_rl, double w_rr, double delta_l, double delta_r) {
-  double v_fl = w_fl * R_e * cos(delta_l);
-  double v_fr = w_fr * R_e * cos(delta_r);
-  
-  double v_rl = w_rl * R_e;
-  double v_rr = w_rr * R_e;
-
-  double vx_wheels = (v_fl + v_fr + v_rl + v_rr) / 4.0;
-
-  return vx_wheels;
-}
 
 int main(int argc, char** argv) {
   rclcpp::init(argc, argv);
