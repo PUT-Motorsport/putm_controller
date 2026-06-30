@@ -11,7 +11,7 @@
 // #include "putm_vcl_interfaces/msg/xsens_rate_of_turn.hpp"
 // #include "vectornav_msgs/msg/imu_group.hpp"
 
-constexpr double MAX_MOMENT = 4 * 9.8 * 13;
+constexpr double MAX_MOMENT = 4 * 9.8 * 11;
 constexpr double Ku = 1.0/25.0;
 constexpr bool enable_tc = true;
 
@@ -405,6 +405,10 @@ void Controller::control_loop() {
     tau_final[2] = 0.0;
     tau_final[3] = 0.0;
   }
+  tau_final[0] = std::clamp(tau_final[0], 0.0, 143.0);
+  tau_final[1] = std::clamp(tau_final[1], 0.0, 143.0);
+  tau_final[2] = std::clamp(tau_final[2], 0.0, 143.0);
+  tau_final[3] = std::clamp(tau_final[3], 0.0, 143.0);
 
   // Publikacja 
   yaw_ref.yaw_rate_ref = steering_angle_deg; 
