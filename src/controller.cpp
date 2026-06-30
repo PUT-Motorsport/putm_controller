@@ -141,8 +141,7 @@ Controller::Controller()
       // xsens_acceleration_ax_subscriber(this->create_subscription<XsensAcceleration>("putm_vcl/xsens_acceleration", 1, std::bind(&Controller::xsens_acceleration_ax_callback, this, _1))),
       // xsens_rate_of_turn_subscriber(this->create_subscription<XsensRateOfTurn>("putm_vcl/xsens_rate_of_turn", 1, std::bind(&Controller::xsens_rate_of_turn_callback, this, _1))),
       xsens_acceleration_subscriber(this->create_subscription<geometry_msgs::msg::Vector3Stamped>("/imu/acceleration", 1, std::bind(&Controller::xsens_acceleration_callback, this, _1))),
-      xsens_angular_velocity_subscriber(this->create_subscription<geometry_msgs::msg::Vector3Stamped>("/imu/angular_velocity", 1, std::bind(&Controller::xsens_angular_velocity_callback, this, _1))),
-      // vn300_rate_of_turn_subscriber(this->create_subscription<vectornav_msgs::msg::ImuGroup>("vectornav/raw/imu", 1,  std::bind(&Controller::vn300_rate_of_turn_callback, this, _1))),
+      xsens_angular_velocity_subscriber(this->create_subscription<geometry_msgs::msg::Vector3Stamped>("/imu/angular_velocity", 1, std::bind(&Controller::xsens_angular_velocity_callback, this, _1))),      // vn300_rate_of_turn_subscriber(this->create_subscription<vectornav_msgs::msg::ImuGroup>("vectornav/raw/imu", 1,  std::bind(&Controller::vn300_rate_of_turn_callback, this, _1))),
       bms_hv_main_subscriber(this->create_subscription<BmsHvMain>("putm_vcl/bms_hv_main", 1,  std::bind(&Controller::bms_hv_main_callback, this, _1))),
       control_loop_timer(this->create_wall_timer(5ms, std::bind(&Controller::control_loop, this))),
       is_initialized(false),
@@ -250,9 +249,9 @@ void Controller::control_loop() {
   double fz_fl = 0.0, fz_fr = 0.0, fz_rl = 0.0, fz_rr = 0.0;
 
   // Low speed mode: poniżej 1 m/s, bez NMPC, bez TC, tylko mapowanie pedału na moment
-  if (vx_est < 100.0) {
-    RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, 
-        "Low-Speed Mode (vx = %.2f). Bypassing NMPC.", vx_est);
+  if (vx_est < 150.0) {
+    //RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, 
+    //    "Low-Speed Mode (vx = %.2f). Bypassing NMPC.", vx_est);
 
     double manual_torque = pedal * MAX_MOMENT / 4.0;
 
