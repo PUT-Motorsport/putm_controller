@@ -73,11 +73,11 @@ class Controller : public rclcpp::Node {
   double ay_raw_prev1 = 0.0, ay_raw_prev2 = 0.0;
   double ay_filt_prev1 = 0.0, ay_filt_prev2 = 0.0;
 
-  const double b0 = 0.00554272;
-  const double b1 = 0.01108543;
-  const double b2 = 0.00554272;
-  const double a1 = -1.77863178;
-  const double a2 = 0.80080265;
+  const double b0 = 0.00988418;
+  const double b1 = 0.01976837;
+  const double b2 = 0.00988418;
+  const double a1 = -1.69972730;
+  const double a2 = 0.73926403;
 
   // Wskaźniki i bufory ACADOS
   tv_nmpc_solver_capsule *acados_capsule;
