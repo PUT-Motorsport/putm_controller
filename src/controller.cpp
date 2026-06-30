@@ -232,7 +232,7 @@ void Controller::control_loop() {
   auto start_time = std::chrono::high_resolution_clock::now();
 
   double pedal = convert_pedal_position(frontbox_driver_input.pedal_position);
-  double steering_angle_deg = frontbox_driver_input.steering_wheel_position;
+  double steering_angle_deg = 0.0;
 
   double w_fl = convert_wheel_speed(speed_fl);
   double w_fr = convert_wheel_speed(speed_fr);
@@ -252,7 +252,7 @@ void Controller::control_loop() {
   calculate_load_transfer(ax, ay, fz_fl, fz_fr, fz_rl, fz_rr);
 
   // Low speed mode z manualnym sterowaniem momentem
-  if (vx_est < 150.0) {
+  if (vx_est < 3.0) {
 
     double manual_torque = pedal * MAX_MOMENT / 4.0;
 
@@ -297,10 +297,10 @@ void Controller::control_loop() {
     lbx0[6] = w_rr; ubx0[6] = w_rr;
     
     // Feedback stanów wewnętrznych
-    lbx0[7] = prev_tau_nmpc[0]; ubx0[7] = prev_tau_nmpc[0];
-    lbx0[8] = prev_tau_nmpc[1]; ubx0[8] = prev_tau_nmpc[1];
-    lbx0[9] = prev_tau_nmpc[2]; ubx0[9] = prev_tau_nmpc[2];
-    lbx0[10]= prev_tau_nmpc[3]; ubx0[10]= prev_tau_nmpc[3];
+    lbx0[7] = tau_final[0]; ubx0[7] = tau_final[0];
+    lbx0[8] = tau_final[1]; ubx0[8] = tau_final[1];
+    lbx0[9] = tau_final[2]; ubx0[9] = tau_final[2];
+    lbx0[10]= tau_final[3]; ubx0[10]= tau_final[3];
 
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "lbx", lbx0);
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "ubx", ubx0);
@@ -352,16 +352,16 @@ void Controller::control_loop() {
     } 
     else {
       // WARM START: Przesunięcie horyzontu
-      double x_temp[TV_NMPC_NX];
-      double u_temp[TV_NMPC_NU];
-      for (int k = 0; k < TV_NMPC_N - 1; k++) {
-          ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, k + 1, "x", x_temp);
-          ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, k + 1, "u", u_temp);
-          ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, k, "x", x_temp);
-          ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, k, "u", u_temp);
-      }
-      ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, TV_NMPC_N - 1, "x", x_temp);
-      ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, TV_NMPC_N, "x", x_temp);
+      // double x_temp[TV_NMPC_NX];
+      // double u_temp[TV_NMPC_NU];
+      // for (int k = 0; k < TV_NMPC_N - 1; k++) {
+      //     ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, k + 1, "x", x_temp);
+      //     ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, k + 1, "u", u_temp);
+      //     ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, k, "x", x_temp);
+      //     ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, k, "u", u_temp);
+      // }
+      // ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, TV_NMPC_N - 1, "x", x_temp);
+      // ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, TV_NMPC_N, "x", x_temp);
 
       // Pobranie zoptymalizowanych momentów
       ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, 1, "x", x_k1);
@@ -407,7 +407,7 @@ void Controller::control_loop() {
   }
 
   // Publikacja 
-  yaw_ref.yaw_rate_ref = yaw_rate_ref; 
+  yaw_ref.yaw_rate_ref = steering_angle_deg; 
   yaw_ref.vx_est = vx_est;
   yaw_ref.vy_est = vy_est;
   yaw_ref.filtered_ax = ax;
