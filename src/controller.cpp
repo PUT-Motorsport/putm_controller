@@ -2,6 +2,7 @@
 #include "putm_vcl_interfaces/msg/bms_hv_main.hpp"
 #include "putm_vcl_interfaces/msg/setpoints.hpp"
 #include "putm_vcl_interfaces/msg/amk_actual_values1.hpp"
+#include "putm_vcl_interfaces/msg/steering_wheel.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "putm_vcl_interfaces/msg/yaw_ref.hpp"
 #include "geometry_msgs/msg/vector3_stamped.hpp"
@@ -32,11 +33,13 @@ class Controller : public rclcpp::Node {
 
  private:
   FrontboxDriverInput frontbox_driver_input;
+  SteeringWheel steering_wheel;
 
 
   rclcpp::Publisher<Setpoints>::SharedPtr setpoints_publisher;
   rclcpp::Publisher<YawRef>::SharedPtr yaw_rate_ref_publisher;
   rclcpp::Subscription<FrontboxDriverInput>::SharedPtr frontbox_driver_input_subscriber;
+  rclcpp::Subscription<SteeringWheel>::SharedPtr steering_wheel_subscriber;
   rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_front_left_actual_values1_subscriber;
   rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_front_right_actual_values1_subscriber;
   rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_rear_left_actual_values1_subscriber;
@@ -112,6 +115,7 @@ class Controller : public rclcpp::Node {
   inline void estimate_velocity_ekf(double ax, double ay, double r, double w_fl, double w_fr, double w_rl, double w_rr, double delta_l, double delta_r, double &vx_est, double &vy_est);
 
   void frontbox_driver_input_topic_callback(const FrontboxDriverInput msg);
+  void steering_wheel_callback(const SteeringWheel::SharedPtr msg);
   void amk_actual_values1_callback(const AmkActualValues1 msg);
   void amk_actual_values2_callback(const AmkActualValues1 msg);
   void amk_actual_values3_callback(const AmkActualValues1 msg);
@@ -134,6 +138,7 @@ Controller::Controller()
       setpoints_publisher(this->create_publisher<Setpoints>("putm_vcl/setpoints", 1)),
       yaw_rate_ref_publisher(this->create_publisher<YawRef>("yaw_ref", 1)),
       frontbox_driver_input_subscriber(this->create_subscription<FrontboxDriverInput>("putm_vcl/frontbox_driver_input", 1, std::bind(&Controller::frontbox_driver_input_topic_callback, this, _1))),
+      steering_wheel_subscriber(this->create_subscription<SteeringWheel>("putm_vcl/steering_wheel", 1, std::bind(&Controller::steering_wheel_callback, this, _1))),
       amk_front_left_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/front/left/actual_values1", 1, std::bind(&Controller::amk_actual_values1_callback, this, _1))),
       amk_front_right_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/front/right/actual_values1", 1, std::bind(&Controller::amk_actual_values2_callback, this, _1))),
       amk_rear_left_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/rear/left/actual_values1", 1, std::bind(&Controller::amk_actual_values3_callback, this, _1))),
@@ -180,6 +185,7 @@ Controller::~Controller() {
 }
 
 void Controller::frontbox_driver_input_topic_callback(const FrontboxDriverInput msg) { frontbox_driver_input = msg; }
+void Controller::steering_wheel_callback(const SteeringWheel::SharedPtr msg) { steering_wheel = *msg; }
 void Controller::amk_actual_values1_callback(const AmkActualValues1 msg) { speed_fl = abs(msg.actual_velocity); }
 void Controller::amk_actual_values2_callback(const AmkActualValues1 msg) { speed_fr = abs(msg.actual_velocity); }
 void Controller::amk_actual_values3_callback(const AmkActualValues1 msg) { speed_rl = abs(msg.actual_velocity); }
@@ -232,7 +238,7 @@ void Controller::control_loop() {
   auto start_time = std::chrono::high_resolution_clock::now();
 
   double pedal = convert_pedal_position(frontbox_driver_input.pedal_position);
-  double steering_angle_deg = 0.0;
+  double steering_angle_deg = steering_wheel.steering_wheel_position;
 
   double w_fl = convert_wheel_speed(speed_fl);
   double w_fr = convert_wheel_speed(speed_fr);
