@@ -267,13 +267,11 @@ void Controller::control_loop() {
     prev_tau_nmpc[3] = manual_torque;
 
     is_initialized = false;
-  } 
-  // NMPC mode: Prędkość powyżej 1.0 m/s, pełne wektorowanie i Traction Control
+  }
   else {
 
     double t_ref = pedal * MAX_MOMENT; 
 
-    // Nadpisanie parametrów bufora P dla wszystkich kroków horyzontu
     p_val[0] = yaw_rate_ref; 
     p_val[1] = delta_l_rad;
     p_val[2] = delta_r_rad;
@@ -328,40 +326,11 @@ void Controller::control_loop() {
     RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 500, 
         "Czas NMPC: %.3f ms | Status: %d", elapsed_ms.count(), status);
     
-
     if (status != 0) {
-      RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 500, "NMPC Fail (Status: %d). Failsafe aktywny.", status);
-      is_initialized = false;
-
-      for (int i = 0; i < 4; i++) {
-        prev_tau_nmpc[i] = 0.0;
-        tau_final[i] = 0.0;
+    RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 500, "NMPC Fail. Przytrzymanie momentu.");
+    is_initialized = false;
     }
-      
-      // FAILSAFE
-      double x_reset[TV_NMPC_NX] = {vx_est, vy_est, yaw_rate, w_fl, w_fr, w_rl, w_rr, 0.0, 0.0, 0.0, 0.0};
-      double u_reset[TV_NMPC_NU] = {0.0, 0.0, 0.0, 0.0};
-      for (int k = 0; k <= TV_NMPC_N; k++) {
-          ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, k, "x", x_reset);
-      }
-      for (int k = 0; k < TV_NMPC_N; k++) {
-          ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, k, "u", u_reset);
-      }
-
-      tau_final[0] = 0; tau_final[1] = 0; tau_final[2] = 0; tau_final[3] = 0;
-    } 
     else {
-      // WARM START: Przesunięcie horyzontu
-      // double x_temp[TV_NMPC_NX];
-      // double u_temp[TV_NMPC_NU];
-      // for (int k = 0; k < TV_NMPC_N - 1; k++) {
-      //     ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, k + 1, "x", x_temp);
-      //     ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, k + 1, "u", u_temp);
-      //     ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, k, "x", x_temp);
-      //     ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, k, "u", u_temp);
-      // }
-      // ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, TV_NMPC_N - 1, "x", x_temp);
-      // ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, TV_NMPC_N, "x", x_temp);
 
       // Pobranie zoptymalizowanych momentów
       ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, 1, "x", x_k1);
@@ -380,7 +349,7 @@ void Controller::control_loop() {
 
           if (error > 0) {
             integral_err[i] += error * dt;
-            if(integral_err[i] > 5.0) integral_err[i] = 5.0; // Anti windup
+            if(integral_err[i] > 5.0) integral_err[i] = 5.0;
             
             tau_tc = (Kp * error) + (Ki * integral_err[i]);
           } else {
@@ -405,10 +374,10 @@ void Controller::control_loop() {
     tau_final[2] = 0.0;
     tau_final[3] = 0.0;
   }
-  tau_final[0] = std::clamp(tau_final[0], 0.0, 143.0);
-  tau_final[1] = std::clamp(tau_final[1], 0.0, 143.0);
-  tau_final[2] = std::clamp(tau_final[2], 0.0, 143.0);
-  tau_final[3] = std::clamp(tau_final[3], 0.0, 143.0);
+  tau_final[0] = std::clamp(tau_final[0], 0.0, 120.0);
+  tau_final[1] = std::clamp(tau_final[1], 0.0, 120.0);
+  tau_final[2] = std::clamp(tau_final[2], 0.0, 120.0);
+  tau_final[3] = std::clamp(tau_final[3], 0.0, 120.0);
 
   // Publikacja 
   yaw_ref.yaw_rate_ref = steering_angle_deg; 
@@ -495,7 +464,7 @@ inline void Controller::calculate_load_transfer(double ax_sensor, double ay_sens
 
 inline int32_t Controller::convert_torque(double torque) {
   static constexpr double TORQUE_SCALER = 1000.0;
-  return (int32_t)((torque / 143) * TORQUE_SCALER);
+  return (int32_t)((torque / 108.0) * TORQUE_SCALER);
 }
 
 inline void Controller::estimate_velocity_ekf(double ax, double ay, double r, double w_fl, double w_fr, double w_rl, double w_rr, double delta_l, double delta_r, double &vx_est, double &vy_est) {
