@@ -12,7 +12,7 @@
 // #include "putm_vcl_interfaces/msg/xsens_rate_of_turn.hpp"
 // #include "vectornav_msgs/msg/imu_group.hpp"
 
-constexpr double MAX_MOMENT = 4 * 9.8 * 11;
+constexpr double MAX_MOMENT = 108.0 * 4.0;
 constexpr double Ku = 1.0/25.0;
 constexpr bool enable_tc = true;
 
@@ -101,10 +101,10 @@ class Controller : public rclcpp::Node {
 
   // Parametry TC
   const double R_e = 0.193;
-  const double dt = 0.005;
-  const double Kp = 50.0;
-  const double Ki = 100.0;
-  const double kappa_limit = 0.15;
+  const double dt = 0.01;
+  const double Kp = 1000.0;
+  const double Ki = 300.0;
+  const double kappa_limit = 0.1;
 
   // EKF
   Eigen::Vector2d ekf_x;
@@ -258,7 +258,7 @@ void Controller::control_loop() {
   calculate_load_transfer(ax, ay, fz_fl, fz_fr, fz_rl, fz_rr);
 
   // Low speed mode z manualnym sterowaniem momentem
-  if (vx_est < 3.0) {
+  if (vx_est < 300.0) {
 
     double manual_torque = pedal * MAX_MOMENT / 4.0;
 
@@ -380,13 +380,13 @@ void Controller::control_loop() {
     tau_final[2] = 0.0;
     tau_final[3] = 0.0;
   }
-  tau_final[0] = std::clamp(tau_final[0], 0.0, 120.0);
-  tau_final[1] = std::clamp(tau_final[1], 0.0, 120.0);
-  tau_final[2] = std::clamp(tau_final[2], 0.0, 120.0);
-  tau_final[3] = std::clamp(tau_final[3], 0.0, 120.0);
+  tau_final[0] = std::clamp(tau_final[0], 0.0, 108.0);
+  tau_final[1] = std::clamp(tau_final[1], 0.0, 108.0);
+  tau_final[2] = std::clamp(tau_final[2], 0.0, 108.0);
+  tau_final[3] = std::clamp(tau_final[3], 0.0, 108.0);
 
   // Publikacja 
-  yaw_ref.yaw_rate_ref = steering_angle_deg; 
+  yaw_ref.yaw_rate_ref = yaw_rate_ref; 
   yaw_ref.vx_est = vx_est;
   yaw_ref.vy_est = vy_est;
   yaw_ref.filtered_ax = ax;
@@ -397,10 +397,10 @@ void Controller::control_loop() {
   yaw_ref.fz_rr = fz_rr;
   yaw_rate_ref_publisher->publish(yaw_ref);
 
-  setpoints.front_left.torque = convert_torque(tau_final[0]);
-  setpoints.front_right.torque = convert_torque(tau_final[1]);
-  setpoints.rear_left.torque = convert_torque(tau_final[2]);
-  setpoints.rear_right.torque = convert_torque(tau_final[3]);
+  setpoints.front_left.torque = convert_torque(tau_final[2]);
+  setpoints.front_right.torque = convert_torque(tau_final[3]);
+  setpoints.rear_left.torque = convert_torque(tau_final[0]);
+  setpoints.rear_right.torque = convert_torque(tau_final[1]);
   setpoints_publisher->publish(setpoints);
 }
 
