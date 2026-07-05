@@ -12,8 +12,8 @@
 // #include "putm_vcl_interfaces/msg/xsens_rate_of_turn.hpp"
 // #include "vectornav_msgs/msg/imu_group.hpp"
 
-constexpr double MAX_MOMENT = 108.0 * 4.0;
-constexpr double Ku = 1.0/25.0;
+constexpr double MAX_MOMENT = 4 * 9.8 * 11;
+constexpr double Ku = 1.0/50.0;
 constexpr bool enable_tc = true;
 
 extern "C" {
@@ -75,6 +75,9 @@ class Controller : public rclcpp::Node {
 
   double ay_raw_prev1 = 0.0, ay_raw_prev2 = 0.0;
   double ay_filt_prev1 = 0.0, ay_filt_prev2 = 0.0;
+
+  double yaw_rate_raw_prev1 = 0.0, yaw_rate_raw_prev2 = 0.0;
+  double yaw_rate_filt_prev1 = 0.0, yaw_rate_filt_prev2 = 0.0;
 
   const double b0 = 0.00988418;
   const double b1 = 0.01976837;
@@ -215,7 +218,15 @@ void Controller::xsens_acceleration_callback(const geometry_msgs::msg::Vector3St
 }
 
 void Controller::xsens_angular_velocity_callback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg) {
-  yaw_rate = msg->vector.z;
+
+  double yaw_rate_raw = msg->vector.z;
+
+  yaw_rate = b0*yaw_rate_raw + b1*yaw_rate_raw_prev1 + b2*yaw_rate_raw_prev2 - a1*yaw_rate_filt_prev1 - a2*yaw_rate_filt_prev2;
+
+  yaw_rate_raw_prev2 = yaw_rate_raw_prev1;
+  yaw_rate_raw_prev1 = yaw_rate_raw;
+  yaw_rate_filt_prev2 = yaw_rate_filt_prev1;
+  yaw_rate_filt_prev1 = yaw_rate;
 }
 
 // void Controller::vn300_rate_of_turn_callback(const vectornav_msgs::msg::ImuGroup msg) {
@@ -238,7 +249,7 @@ void Controller::control_loop() {
   auto start_time = std::chrono::high_resolution_clock::now();
 
   double pedal = convert_pedal_position(frontbox_driver_input.pedal_position);
-  double steering_angle_deg = steering_wheel.steering_wheel_position;
+  double steering_angle_deg = steering_wheel.steering_wheel_position * -1;
 
   double w_fl = convert_wheel_speed(speed_fl);
   double w_fr = convert_wheel_speed(speed_fr);
@@ -252,7 +263,7 @@ void Controller::control_loop() {
   double vx_est = 1.0;
   double vy_est = 0.0;
   estimate_velocity_ekf(ax, ay, yaw_rate, w_fl, w_fr, w_rl, w_rr, delta_l_rad, delta_r_rad, vx_est, vy_est);
-  double delta_avg_rad = (delta_l_rad + delta_r_rad);
+  double delta_avg_rad = (delta_l_rad + delta_r_rad) / 2.0;
   double yaw_rate_ref = referenceYawRate(vx_est, delta_avg_rad * 180.0 / M_PI);
   double fz_fl = 0.0, fz_fr = 0.0, fz_rl = 0.0, fz_rr = 0.0;
   calculate_load_transfer(ax, ay, fz_fl, fz_fr, fz_rl, fz_rr);
@@ -347,28 +358,28 @@ void Controller::control_loop() {
 
       // TC
       double w_actual[4] = {w_fl, w_fr, w_rl, w_rr};
+      
       for (int i = 0; i < 4; i++) {
         if (enable_tc && pedal > 0.05) { 
-          double kappa_actual = ((w_actual[i] * R_e) - vx_est) / vx_est;
-          double error = kappa_actual - kappa_limit;
-          double tau_tc = 0.0;
+          
+          double max_safe_v_wheel = (vx_est * 1.1);
+          double current_v_wheel = w_actual[i] * R_e;
 
-          if (error > 0) {
-            integral_err[i] += error * dt;
-            if(integral_err[i] > 5.0) integral_err[i] = 5.0;
-            
-            tau_tc = (Kp * error) + (Ki * integral_err[i]);
-          } else {
-            integral_err[i] = 0.0; 
-            tau_tc = 0.0;
+          double dynamic_max_torque = 120.0;
+
+          if (current_v_wheel > max_safe_v_wheel) {
+              double speed_excess = current_v_wheel - max_safe_v_wheel;
+              
+              double damping_factor = 40.0; 
+              
+              dynamic_max_torque = 120.0 - (speed_excess * damping_factor);
+              
+              if (dynamic_max_torque < 0.0) dynamic_max_torque = 0.0;
           }
-
-          tau_final[i] = prev_tau_nmpc[i] - tau_tc;
-          if (tau_final[i] < 0.0) tau_final[i] = 0.0;
-        } 
-        else {
-          integral_err[i] = 0.0;
-          tau_final[i] = prev_tau_nmpc[i];
+          tau_final[i] = std::clamp(prev_tau_nmpc[i], 0.0, dynamic_max_torque);
+          
+        } else {
+          tau_final[i] = std::clamp(prev_tau_nmpc[i], 0.0, 120.0);
         }
       }
     }
@@ -380,10 +391,6 @@ void Controller::control_loop() {
     tau_final[2] = 0.0;
     tau_final[3] = 0.0;
   }
-  tau_final[0] = std::clamp(tau_final[0], 0.0, 108.0);
-  tau_final[1] = std::clamp(tau_final[1], 0.0, 108.0);
-  tau_final[2] = std::clamp(tau_final[2], 0.0, 108.0);
-  tau_final[3] = std::clamp(tau_final[3], 0.0, 108.0);
 
   // Publikacja 
   yaw_ref.yaw_rate_ref = yaw_rate_ref; 
@@ -431,13 +438,26 @@ inline double Controller::referenceYawRate(double vx, double delta_deg)
 
 inline void Controller::convert_steering_angle(double steering_wheel_deg, double &delta_l_rad, double &delta_r_rad) {
   
-  // Wielomiany geometrii Ackermanna
-  double delta_l_deg = -0.0000942 * steering_wheel_deg * steering_wheel_deg + 0.2543 * steering_wheel_deg + 0.0182;
-  double delta_r_deg = 0.000410 * steering_wheel_deg * steering_wheel_deg + 0.2554 * steering_wheel_deg + 0.0200;
+  double S_abs = std::abs(steering_wheel_deg);
+  
+  // Zawsze liczymy bezwzględny kąt na podstawie wielomianów
+  double inner_wheel = 0.000410 * S_abs * S_abs + 0.2554 * S_abs;
+  double outer_wheel = -0.0000942 * S_abs * S_abs + 0.2543 * S_abs;
 
-  // Deg to rad
-  delta_l_rad = delta_l_deg * (M_PI / 180.0);
-  delta_r_rad = delta_r_deg * (M_PI / 180.0);
+  if (steering_wheel_deg >= 0.0) {
+    // LEWO (Dodatnie) -> Lewe koło jest wewnętrzne
+    delta_l_rad = inner_wheel;
+    delta_r_rad = outer_wheel;
+  } else {
+    // PRAWO (Ujemne) -> Prawe koło jest wewnętrzne
+    // UWAGA: Kąty muszą być ujemne dla skrętu w prawo!
+    delta_l_rad = -outer_wheel;
+    delta_r_rad = -inner_wheel;
+  }
+
+  // Konwersja na radiany
+  delta_l_rad *= (M_PI / 180.0);
+  delta_r_rad *= (M_PI / 180.0);
 }
 
 inline void Controller::calculate_load_transfer(double ax_sensor, double ay_sensor, double &fz_fl, double &fz_fr, double &fz_rl, double &fz_rr) {
@@ -457,10 +477,11 @@ inline void Controller::calculate_load_transfer(double ax_sensor, double ay_sens
   double dFz_lat_front = (m * h * ay_sensor * b) / (2.0 * L * c);
   double dFz_lat_rear  = (m * h * ay_sensor * a) / (2.0 * L * c);
 
-  fz_fl = Fz_static_front - dFz_long - dFz_lat_front;
-  fz_fr = Fz_static_front - dFz_long + dFz_lat_front;
-  fz_rl = Fz_static_rear  + dFz_long - dFz_lat_rear;
-  fz_rr = Fz_static_rear  + dFz_long + dFz_lat_rear;
+  fz_fl = Fz_static_front - dFz_long + dFz_lat_front; 
+  fz_fr = Fz_static_front - dFz_long - dFz_lat_front; 
+  
+  fz_rl = Fz_static_rear  + dFz_long + dFz_lat_rear;
+  fz_rr = Fz_static_rear  + dFz_long - dFz_lat_rear;
 
   if (fz_fl < 10.0) fz_fl = 10.0;
   if (fz_fr < 10.0) fz_fr = 10.0;
