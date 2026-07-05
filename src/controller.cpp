@@ -269,7 +269,7 @@ void Controller::control_loop() {
   calculate_load_transfer(ax, ay, fz_fl, fz_fr, fz_rl, fz_rr);
 
   // Low speed mode z manualnym sterowaniem momentem
-  if (vx_est < 300.0) {
+  if (vx_est < 3.0) {
 
     double manual_torque = pedal * MAX_MOMENT / 4.0;
 
@@ -404,10 +404,10 @@ void Controller::control_loop() {
   yaw_ref.fz_rr = fz_rr;
   yaw_rate_ref_publisher->publish(yaw_ref);
 
-  setpoints.front_left.torque = convert_torque(tau_final[2]);
-  setpoints.front_right.torque = convert_torque(tau_final[3]);
-  setpoints.rear_left.torque = convert_torque(tau_final[0]);
-  setpoints.rear_right.torque = convert_torque(tau_final[1]);
+  setpoints.front_left.torque = convert_torque(tau_final[0]);
+  setpoints.front_right.torque = convert_torque(tau_final[1]);
+  setpoints.rear_left.torque = convert_torque(tau_final[2]);
+  setpoints.rear_right.torque = convert_torque(tau_final[3]);
   setpoints_publisher->publish(setpoints);
 }
 
