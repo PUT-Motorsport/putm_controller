@@ -13,6 +13,7 @@
 // #include "vectornav_msgs/msg/imu_group.hpp"
 
 constexpr double MAX_MOMENT = 4 * 9.8 * 11;
+constexpr double CAP_MOMENT = 143;
 constexpr double Ku = 1.0/50.0;
 constexpr bool enable_tc = true;
 
@@ -97,17 +98,16 @@ class Controller : public rclcpp::Node {
   double p_val[TV_NMPC_NP];
   double x_k1[TV_NMPC_NX];
 
+  const double dt = 0.01;
+
   // TC
-  double integral_err[4];
   double tau_final[4];
   double prev_tau_nmpc[4];
 
   // Parametry TC
   const double R_e = 0.193;
-  const double dt = 0.01;
-  const double Kp = 1000.0;
-  const double Ki = 300.0;
-  const double kappa_limit = 0.1;
+
+  const double kappa_limit = 1.05;
 
   // EKF
   Eigen::Vector2d ekf_x;
@@ -172,7 +172,6 @@ Controller::Controller()
 
       for (int i = 0; i < 4; i++) {
         tau_final[i] = 0.0;
-        integral_err[i] = 0.0;
         prev_tau_nmpc[i] = 0.0;
       }
 
@@ -271,7 +270,7 @@ void Controller::control_loop() {
   // Low speed mode z manualnym sterowaniem momentem
   if (vx_est < 3.0) {
 
-    double manual_torque = pedal * MAX_MOMENT / 4.0;
+    double manual_torque = pedal * CAP_MOMENT / 4.0;
 
     tau_final[0] = manual_torque;
     tau_final[1] = manual_torque;
@@ -287,7 +286,7 @@ void Controller::control_loop() {
   }
   else {
 
-    double t_ref = pedal * MAX_MOMENT; 
+    double t_ref = pedal * CAP_MOMENT; 
 
     p_val[0] = yaw_rate_ref; 
     p_val[1] = delta_l_rad;
@@ -362,24 +361,24 @@ void Controller::control_loop() {
       for (int i = 0; i < 4; i++) {
         if (enable_tc && pedal > 0.05) { 
           
-          double max_safe_v_wheel = (vx_est * 1.1);
+          double max_safe_v_wheel = (vx_est * kappa_limit);
           double current_v_wheel = w_actual[i] * R_e;
 
-          double dynamic_max_torque = 120.0;
+          double dynamic_max_torque = CAP_MOMENT;
 
           if (current_v_wheel > max_safe_v_wheel) {
               double speed_excess = current_v_wheel - max_safe_v_wheel;
               
-              double damping_factor = 40.0; 
+              double damping_factor = 80.0; 
               
-              dynamic_max_torque = 120.0 - (speed_excess * damping_factor);
+              dynamic_max_torque = CAP_MOMENT - (speed_excess * damping_factor);
               
               if (dynamic_max_torque < 0.0) dynamic_max_torque = 0.0;
           }
           tau_final[i] = std::clamp(prev_tau_nmpc[i], 0.0, dynamic_max_torque);
           
         } else {
-          tau_final[i] = std::clamp(prev_tau_nmpc[i], 0.0, 120.0);
+          tau_final[i] = std::clamp(prev_tau_nmpc[i], 0.0, CAP_MOMENT);
         }
       }
     }
