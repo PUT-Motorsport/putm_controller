@@ -268,7 +268,7 @@ void Controller::control_loop() {
   calculate_load_transfer(ax, ay, fz_fl, fz_fr, fz_rl, fz_rr);
 
   // Low speed mode z manualnym sterowaniem momentem
-  if (vx_est < 3.0) {
+  if (vx_est < 1.5 || pedal < 0.8) {
 
     double manual_torque = pedal * CAP_MOMENT / 4.0;
 
@@ -285,105 +285,12 @@ void Controller::control_loop() {
     is_initialized = false;
   }
   else {
-
-    double t_ref = pedal * CAP_MOMENT; 
-
-    p_val[0] = yaw_rate_ref; 
-    p_val[1] = delta_l_rad;
-    p_val[2] = delta_r_rad;
-    p_val[3] = fz_fl;
-    p_val[4] = fz_fr;
-    p_val[5] = fz_rl;
-    p_val[6] = fz_rr;
-    p_val[7] = t_ref;
-
-    for (int i = 0; i <= TV_NMPC_N; i++) {
-      tv_nmpc_acados_update_params(acados_capsule, i, p_val, 8);
-    }
-
-    // Przygotowanie bufora stanu x0
-    lbx0[0] = vx_est; ubx0[0] = vx_est;
-    lbx0[1] = vy_est; ubx0[1] = vy_est;
-    lbx0[2] = yaw_rate; ubx0[2] = yaw_rate;
-    lbx0[3] = w_fl; ubx0[3] = w_fl;
-    lbx0[4] = w_fr; ubx0[4] = w_fr;
-    lbx0[5] = w_rl; ubx0[5] = w_rl;
-    lbx0[6] = w_rr; ubx0[6] = w_rr;
+    auto velocity_set = vx_est * 1.1;
     
-    // Feedback stanów wewnętrznych
-    lbx0[7] = tau_final[0]; ubx0[7] = tau_final[0];
-    lbx0[8] = tau_final[1]; ubx0[8] = tau_final[1];
-    lbx0[9] = tau_final[2]; ubx0[9] = tau_final[2];
-    lbx0[10]= tau_final[3]; ubx0[10]= tau_final[3];
 
-    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "lbx", lbx0);
-    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "ubx", ubx0);
 
-    // COLD START 
-    if (!is_initialized) {
-      double x_init[TV_NMPC_NX] = {vx_est, vy_est, yaw_rate, w_fl, w_fr, w_rl, w_rr, 
-                                   tau_final[0], tau_final[1], tau_final[2], tau_final[3]};
-      double u_init[TV_NMPC_NU] = {0.0, 0.0, 0.0, 0.0};
-
-      for (int i = 0; i < TV_NMPC_N; i++) {
-        ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, i, "x", x_init);
-        ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, i, "u", u_init);
-      }
-      ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, TV_NMPC_N, "x", x_init);
-      is_initialized = true;
-    }
-    
-    // SOLVE
-    int status = tv_nmpc_acados_solve(acados_capsule);
-    
-    auto end_time = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> elapsed_ms = end_time - start_time;
-
-    RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 500, 
-        "Czas NMPC: %.3f ms | Status: %d", elapsed_ms.count(), status);
-    
-    if (status != 0) {
-    RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 500, "NMPC Fail. Przytrzymanie momentu.");
-    is_initialized = false;
-    }
-    else {
-
-      // Pobranie zoptymalizowanych momentów
-      ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, 1, "x", x_k1);
-      prev_tau_nmpc[0] = x_k1[7]; 
-      prev_tau_nmpc[1] = x_k1[8]; 
-      prev_tau_nmpc[2] = x_k1[9]; 
-      prev_tau_nmpc[3] = x_k1[10];
-
-      // TC
-      double w_actual[4] = {w_fl, w_fr, w_rl, w_rr};
-      
-      for (int i = 0; i < 4; i++) {
-        if (enable_tc && pedal > 0.05) { 
-          
-          double max_safe_v_wheel = (vx_est * kappa_limit);
-          double current_v_wheel = w_actual[i] * R_e;
-
-          double dynamic_max_torque = CAP_MOMENT;
-
-          if (current_v_wheel > max_safe_v_wheel) {
-              double speed_excess = current_v_wheel - max_safe_v_wheel;
-              
-              double damping_factor = 80.0; 
-              
-              dynamic_max_torque = CAP_MOMENT - (speed_excess * damping_factor);
-              
-              if (dynamic_max_torque < 0.0) dynamic_max_torque = 0.0;
-          }
-          tau_final[i] = std::clamp(prev_tau_nmpc[i], 0.0, dynamic_max_torque);
-          
-        } else {
-          tau_final[i] = std::clamp(prev_tau_nmpc[i], 0.0, CAP_MOMENT);
-        }
-      }
-    }
   }
-  
+
   if (pedal < 0.01) {
     tau_final[0] = 0.0;
     tau_final[1] = 0.0;
