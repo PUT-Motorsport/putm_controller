@@ -259,6 +259,10 @@ void Controller::control_loop() {
   double delta_r_rad = 0.0;
   convert_steering_angle(steering_angle_deg, delta_l_rad, delta_r_rad);
   
+
+  double K_sc = 40.0;
+  double K_integral_sc = 0.5;
+
   double vx_est = 1.0;
   double vy_est = 0.0;
   estimate_velocity_ekf(ax, ay, yaw_rate, w_fl, w_fr, w_rl, w_rr, delta_l_rad, delta_r_rad, vx_est, vy_est);
@@ -284,10 +288,25 @@ void Controller::control_loop() {
 
     is_initialized = false;
   }
-  else {
-    auto velocity_set = vx_est * 1.1;
-    
+  else { 
+    auto velocity_set = vx_est * 1.1; // optimal speed vlocity
 
+    auto velocity_front_left_error = velocity_set - (speed_fl * 2 * 3.1415 * 0.198 / 60);
+    integral_front_left += velocity_front_left_error;
+    auto tau_final[0] = K_sc * velocity_front_left_error + K_integral_sc * integral_front_left;
+  
+    auto velocity_front_right_error = velocity_set - (speed_fr * 2 * 3.1415 * 0.198 / 60);
+    integral_front_right += velocity_front_right_error;
+    auto tau_final[1] = K_sc * velocity_front_right_error + K_integral_sc * integral_front_right;
+
+
+    auto velocity_rear_left_error = velocity_set - (speed_rl * 2 * 3.1415 * 0.198 / 60);
+    integral_rear_left += velocity_rear_left_error;
+    auto tau_final[1] = K_sc * velocity_rear_left_error + K_integral_sc * integral_rear_left;
+
+    auto velocity_rear_right_error = velocity_set - (speed_rr * 2 * 3.1415 * 0.198 / 60);
+    integral_rear_right += velocity_rear_right_error;
+    auto tau_final[1] = K_sc * velocity_rear_right_error + K_integral_sc * integral_rear_right;
 
   }
 
@@ -298,17 +317,6 @@ void Controller::control_loop() {
     tau_final[3] = 0.0;
   }
 
-  // Publikacja 
-  yaw_ref.yaw_rate_ref = yaw_rate_ref; 
-  yaw_ref.vx_est = vx_est;
-  yaw_ref.vy_est = vy_est;
-  yaw_ref.filtered_ax = ax;
-  yaw_ref.filtered_ay = ay;
-  yaw_ref.fz_fl = fz_fl;
-  yaw_ref.fz_fr = fz_fr;
-  yaw_ref.fz_rl = fz_rl;
-  yaw_ref.fz_rr = fz_rr;
-  yaw_rate_ref_publisher->publish(yaw_ref);
 
   setpoints.front_left.torque = convert_torque(tau_final[0]);
   setpoints.front_right.torque = convert_torque(tau_final[1]);
