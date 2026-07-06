@@ -425,7 +425,7 @@ inline double Controller::convert_wheel_speed(double rpm) {
 inline double Controller::referenceYawRate(double vx, double delta_deg)
 {
     const double delta_wheel = (delta_deg * M_PI / 180.0);
-    const double denominator = 1.53 * (1.0 + Ku * vx * vx);
+    const double denominator = 1.53 * (0.1 + Ku * vx * vx);
 
     if (std::fabs(denominator) < 1e-6)
         return 0.0;
