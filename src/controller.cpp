@@ -63,6 +63,9 @@ class Controller : public rclcpp::Node {
   inline void calculate_load_transfer(double ax, double ay, double &fz_fl, double &fz_fr, double &fz_rl, double &fz_rr);
   inline double referenceYawRate(double vx, double delta_deg);
   
+  double integral_front_left = 0.0, integral_front_right = 0.0;
+  double integral_rear_left = 0.0, integral_rear_right = 0.0;
+
   // Stany
   bool is_initialized;
   double speed_fl, speed_fr, speed_rl, speed_rr;
