@@ -3,6 +3,7 @@
 #include "putm_vcl_interfaces/msg/setpoints.hpp"
 #include "putm_vcl_interfaces/msg/amk_actual_values1.hpp"
 #include "putm_vcl_interfaces/msg/steering_wheel.hpp"
+#include "putm_vcl_interfaces/msg/inverters_status.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "putm_vcl_interfaces/msg/yaw_ref.hpp"
 #include "geometry_msgs/msg/vector3_stamped.hpp"
@@ -35,7 +36,7 @@ class Controller : public rclcpp::Node {
  private:
   FrontboxDriverInput frontbox_driver_input;
   SteeringWheel steering_wheel;
-
+  InvertersStatus current_inverters_status;
 
   rclcpp::Publisher<Setpoints>::SharedPtr setpoints_publisher;
   rclcpp::Publisher<YawRef>::SharedPtr yaw_rate_ref_publisher;
@@ -45,6 +46,8 @@ class Controller : public rclcpp::Node {
   rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_front_right_actual_values1_subscriber;
   rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_rear_left_actual_values1_subscriber;
   rclcpp::Subscription<AmkActualValues1>::SharedPtr amk_rear_right_actual_values1_subscriber;
+
+  rclcpp::Subscription<InvertersStatus>::SharedPtr inverters_status_subscriber;
 
   // rclcpp::Subscription<XsensAcceleration>::SharedPtr xsens_acceleration_ay_subscriber;
   // rclcpp::Subscription<XsensAcceleration>::SharedPtr xsens_acceleration_ax_subscriber;
@@ -123,6 +126,8 @@ class Controller : public rclcpp::Node {
   void amk_actual_values2_callback(const AmkActualValues1 msg);
   void amk_actual_values3_callback(const AmkActualValues1 msg);
   void amk_actual_values4_callback(const AmkActualValues1 msg);
+
+  void inverters_status_callback(const InvertersStatus msg);
   
   // void xsens_acceleration_ay_callback(const XsensAcceleration msg);
   // void xsens_acceleration_ax_callback(const XsensAcceleration msg);
@@ -141,6 +146,7 @@ Controller::Controller()
       setpoints_publisher(this->create_publisher<Setpoints>("putm_vcl/setpoints", 1)),
       yaw_rate_ref_publisher(this->create_publisher<YawRef>("yaw_ref", 1)),
       frontbox_driver_input_subscriber(this->create_subscription<FrontboxDriverInput>("putm_vcl/frontbox_driver_input", 1, std::bind(&Controller::frontbox_driver_input_topic_callback, this, _1))),
+      inverters_status_subscriber(this->create_subscription<InvertersStatus>("inverters_status", 1, std::bind(&Controller::inverters_status_callback, this, _1))),
       steering_wheel_subscriber(this->create_subscription<SteeringWheel>("putm_vcl/steering_wheel", 1, std::bind(&Controller::steering_wheel_callback, this, _1))),
       amk_front_left_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/front/left/actual_values1", 1, std::bind(&Controller::amk_actual_values1_callback, this, _1))),
       amk_front_right_actual_values1_subscriber(this->create_subscription<AmkActualValues1>("putm_vcl/amk/front/right/actual_values1", 1, std::bind(&Controller::amk_actual_values2_callback, this, _1))),
@@ -192,6 +198,8 @@ void Controller::amk_actual_values1_callback(const AmkActualValues1 msg) { speed
 void Controller::amk_actual_values2_callback(const AmkActualValues1 msg) { speed_fr = abs(msg.actual_velocity); }
 void Controller::amk_actual_values3_callback(const AmkActualValues1 msg) { speed_rl = abs(msg.actual_velocity); }
 void Controller::amk_actual_values4_callback(const AmkActualValues1 msg) { speed_rr = abs(msg.actual_velocity); }
+
+void Controller::inverters_status_callback(const InvertersStatus msg) { current_inverters_status = msg; }
 
 // void Controller::xsens_acceleration_ay_callback(const XsensAcceleration msg) { (void)msg; /* ay = msg.acc_y; */ }
 // void Controller::xsens_acceleration_ax_callback(const XsensAcceleration msg) { (void)msg; /* ax = msg.acc_x; */ }
@@ -383,7 +391,31 @@ void Controller::control_loop() {
       }
     }
   }
-  
+
+  if (current_inverters_status.is_limp_home_active) {
+      // 1. Zlokalizowanie uszkodzonych osi
+      bool fl_failed = (current_inverters_status.fl_state != 0);
+      bool fr_failed = (current_inverters_status.fr_state != 0);
+      bool rl_failed = (current_inverters_status.rl_state != 0);
+      bool rr_failed = (current_inverters_status.rr_state != 0);
+
+      // 2. Symetryczne odcięcie osi PRZEDNIEJ
+      if (fl_failed || fr_failed) {
+          tau_final[0] = 0.0; // Odcinamy lewy przód
+          tau_final[1] = 0.0; // Odcinamy prawy przód
+          RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 500, 
+              "FRONT AXLE FAULT! Cut torque on FL and FR. RWD Limp Mode Active.");
+      }
+
+      // 3. Symetryczne odcięcie osi TYLNEJ
+      if (rl_failed || rr_failed) {
+          tau_final[2] = 0.0; // Odcinamy lewy tył
+          tau_final[3] = 0.0; // Odcinamy prawy tył
+          RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 500, 
+              "REAR AXLE FAULT! Cut torque on RL and RR. FWD Limp Mode Active.");
+      }
+  }
+
   if (pedal < 0.01) {
     tau_final[0] = 0.0;
     tau_final[1] = 0.0;
