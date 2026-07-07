@@ -275,7 +275,7 @@ void Controller::control_loop() {
   calculate_load_transfer(ax, ay, fz_fl, fz_fr, fz_rl, fz_rr);
 
   // Low speed mode z manualnym sterowaniem momentem
-  if (vx_est < 1.5 || pedal < 0.8) {
+  if (vx_est < 2.5 || pedal < 0.8) {
 
     double manual_torque = pedal * CAP_MOMENT / 4.0;
 
