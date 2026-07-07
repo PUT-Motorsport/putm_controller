@@ -291,20 +291,20 @@ void Controller::control_loop() {
   else { 
     auto velocity_set = vx_est * 1.1; // optimal speed vlocity
 
-    auto velocity_front_left_error = velocity_set - (speed_fl * 2 * 3.1415 * 0.198 / 60);
+    auto velocity_front_left_error = velocity_set - (speed_fl * 2 * 3.1415 * 0.198 / (60 * 11) );
     integral_front_left += velocity_front_left_error;
     auto tau_final[0] = K_sc * velocity_front_left_error + K_integral_sc * integral_front_left;
   
-    auto velocity_front_right_error = velocity_set - (speed_fr * 2 * 3.1415 * 0.198 / 60);
+    auto velocity_front_right_error = velocity_set - (speed_fr * 2 * 3.1415 * 0.198 / (60 * 11) );
     integral_front_right += velocity_front_right_error;
     auto tau_final[1] = K_sc * velocity_front_right_error + K_integral_sc * integral_front_right;
 
 
-    auto velocity_rear_left_error = velocity_set - (speed_rl * 2 * 3.1415 * 0.198 / 60);
+    auto velocity_rear_left_error = velocity_set - (speed_rl * 2 * 3.1415 * 0.198 / (60 * 11) );
     integral_rear_left += velocity_rear_left_error;
     auto tau_final[2] = K_sc * velocity_rear_left_error + K_integral_sc * integral_rear_left;
 
-    auto velocity_rear_right_error = velocity_set - (speed_rr * 2 * 3.1415 * 0.198 / 60);
+    auto velocity_rear_right_error = velocity_set - (speed_rr * 2 * 3.1415 * 0.198 / (60 * 11) );
     integral_rear_right += velocity_rear_right_error;
     auto tau_final[3] = K_sc * velocity_rear_right_error + K_integral_sc * integral_rear_right;
     
