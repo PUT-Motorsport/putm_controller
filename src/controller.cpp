@@ -263,7 +263,8 @@ void Controller::control_loop() {
   convert_steering_angle(steering_angle_deg, delta_l_rad, delta_r_rad);
   
 
-  double K_sc = 40.0;
+  // double K_sc = 40.0;
+  double K_sc = 1.0;
   double K_integral_sc = 0.5;
 
   double vx_est = 1.0;
@@ -273,7 +274,7 @@ void Controller::control_loop() {
   double yaw_rate_ref = referenceYawRate(vx_est, delta_avg_rad * 180.0 / M_PI);
   double fz_fl = 0.0, fz_fr = 0.0, fz_rl = 0.0, fz_rr = 0.0;
   calculate_load_transfer(ax, ay, fz_fl, fz_fr, fz_rl, fz_rr);
-
+/*
   // Low speed mode z manualnym sterowaniem momentem
   if (vx_est < 2.5 || pedal < 0.8) {
 
@@ -291,30 +292,32 @@ void Controller::control_loop() {
 
     is_initialized = false;
   }
-  else { 
-    auto velocity_set = vx_est * 1.1; // optimal speed vlocity
+  else {  */
+    auto velocity_set = 3; // optimal speed vlocity
 
     auto velocity_front_left_error = velocity_set - (speed_fl * 2 * 3.1415 * 0.198 / (60 * 11) );
-    integral_front_left += velocity_front_left_error;
-    auto tau_final[0] = K_sc * velocity_front_left_error + K_integral_sc * integral_front_left;
-  
+    
+    // integral_front_left += velocity_front_left_error;
+    tau_final[0] = K_sc * velocity_front_left_error;// + K_integral_sc * integral_front_left;
+    RCLCPP_INFO(this->get_logger(), "TAU_FINAL[0]: '%f'", tau_final[0]);
+
     auto velocity_front_right_error = velocity_set - (speed_fr * 2 * 3.1415 * 0.198 / (60 * 11) );
-    integral_front_right += velocity_front_right_error;
-    auto tau_final[1] = K_sc * velocity_front_right_error + K_integral_sc * integral_front_right;
+    // integral_front_right += velocity_front_right_error;
+    tau_final[1] = K_sc * velocity_front_right_error; //+ K_integral_sc * integral_front_right;
 
 
     auto velocity_rear_left_error = velocity_set - (speed_rl * 2 * 3.1415 * 0.198 / (60 * 11) );
-    integral_rear_left += velocity_rear_left_error;
-    auto tau_final[2] = K_sc * velocity_rear_left_error + K_integral_sc * integral_rear_left;
+    // integral_rear_left += velocity_rear_left_error;
+    tau_final[2] = K_sc * velocity_rear_left_error ;//+ K_integral_sc * integral_rear_left;
 
     auto velocity_rear_right_error = velocity_set - (speed_rr * 2 * 3.1415 * 0.198 / (60 * 11) );
-    integral_rear_right += velocity_rear_right_error;
-    auto tau_final[3] = K_sc * velocity_rear_right_error + K_integral_sc * integral_rear_right;
+    // integral_rear_right += velocity_rear_right_error;
+    tau_final[3] = K_sc * velocity_rear_right_error ;//+ K_integral_sc * integral_rear_right;
     
     
-  }
+  //}
 
-  if (pedal < 0.01) {
+  if (pedal < 0.05) {
     tau_final[0] = 0.0;
     tau_final[1] = 0.0;
     tau_final[2] = 0.0;
