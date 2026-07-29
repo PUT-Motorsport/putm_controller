@@ -264,8 +264,8 @@ void Controller::control_loop() {
   
 
   // double K_sc = 40.0;
-  double K_sc = 1.0;
-  double K_integral_sc = 0.5;
+  double K_sc =35.0;
+  double K_integral_sc = 0.005;
 
   double vx_est = 1.0;
   double vy_est = 0.0;
@@ -293,26 +293,25 @@ void Controller::control_loop() {
     is_initialized = false;
   }
   else {  */
-    auto velocity_set = 3; // optimal speed vlocity
+    auto velocity_set = 3.5; // optimal speed vlocity
 
     auto velocity_front_left_error = velocity_set - (speed_fl * 2 * 3.1415 * 0.198 / (60 * 11) );
-    
-    // integral_front_left += velocity_front_left_error;
-    tau_final[0] = K_sc * velocity_front_left_error;// + K_integral_sc * integral_front_left;
+    integral_front_left += velocity_front_left_error;
+    tau_final[0] = K_sc * velocity_front_left_error + K_integral_sc * integral_front_left;
     RCLCPP_INFO(this->get_logger(), "TAU_FINAL[0]: '%f'", tau_final[0]);
 
     auto velocity_front_right_error = velocity_set - (speed_fr * 2 * 3.1415 * 0.198 / (60 * 11) );
-    // integral_front_right += velocity_front_right_error;
-    tau_final[1] = K_sc * velocity_front_right_error; //+ K_integral_sc * integral_front_right;
+    integral_front_right += velocity_front_right_error;
+    tau_final[1] = K_sc * velocity_front_right_error+ K_integral_sc * integral_front_right;
 
 
     auto velocity_rear_left_error = velocity_set - (speed_rl * 2 * 3.1415 * 0.198 / (60 * 11) );
-    // integral_rear_left += velocity_rear_left_error;
-    tau_final[2] = K_sc * velocity_rear_left_error ;//+ K_integral_sc * integral_rear_left;
+    integral_rear_left += velocity_rear_left_error;
+    tau_final[2] = K_sc * velocity_rear_left_error+ K_integral_sc * integral_rear_left;
 
     auto velocity_rear_right_error = velocity_set - (speed_rr * 2 * 3.1415 * 0.198 / (60 * 11) );
-    // integral_rear_right += velocity_rear_right_error;
-    tau_final[3] = K_sc * velocity_rear_right_error ;//+ K_integral_sc * integral_rear_right;
+    integral_rear_right += velocity_rear_right_error;
+    tau_final[3] = K_sc * velocity_rear_right_error+ K_integral_sc * integral_rear_right;
     
     
   //}
@@ -411,7 +410,7 @@ inline void Controller::calculate_load_transfer(double ax_sensor, double ay_sens
 }
 
 inline int32_t Controller::convert_torque(double torque) {
-  static constexpr double TORQUE_SCALER = 1000.0;
+  static constexpr double TORQUE_SCALER = 108.0;
   return (int32_t)((torque / 108.0) * TORQUE_SCALER);
 }
 
