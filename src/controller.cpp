@@ -107,7 +107,7 @@ class Controller : public rclcpp::Node {
   // Parametry TC
   const double R_e = 0.193;
 
-  const double kappa_limit = 1.05;
+  const double kappa_limit = 1.10;
 
   // EKF
   Eigen::Vector2d ekf_x;
@@ -268,7 +268,7 @@ void Controller::control_loop() {
   calculate_load_transfer(ax, ay, fz_fl, fz_fr, fz_rl, fz_rr);
 
   // Low speed mode z manualnym sterowaniem momentem
-  if (vx_est < 3.0) {
+  if (vx_est < 2.0) {
 
     double manual_torque = pedal * CAP_MOMENT;
 
@@ -439,17 +439,13 @@ inline void Controller::convert_steering_angle(double steering_wheel_deg, double
   
   double S_abs = std::abs(steering_wheel_deg);
   
-  // Zawsze liczymy bezwzględny kąt na podstawie wielomianów
   double inner_wheel = 0.000410 * S_abs * S_abs + 0.2554 * S_abs;
   double outer_wheel = -0.0000942 * S_abs * S_abs + 0.2543 * S_abs;
 
   if (steering_wheel_deg >= 0.0) {
-    // LEWO (Dodatnie) -> Lewe koło jest wewnętrzne
     delta_l_rad = inner_wheel;
     delta_r_rad = outer_wheel;
   } else {
-    // PRAWO (Ujemne) -> Prawe koło jest wewnętrzne
-    // UWAGA: Kąty muszą być ujemne dla skrętu w prawo!
     delta_l_rad = -outer_wheel;
     delta_r_rad = -inner_wheel;
   }
@@ -476,11 +472,11 @@ inline void Controller::calculate_load_transfer(double ax_sensor, double ay_sens
   double dFz_lat_front = (m * h * ay_sensor * b) / (2.0 * L * c);
   double dFz_lat_rear  = (m * h * ay_sensor * a) / (2.0 * L * c);
 
-  fz_fl = Fz_static_front - dFz_long + dFz_lat_front; 
-  fz_fr = Fz_static_front - dFz_long - dFz_lat_front; 
+  fz_fl = Fz_static_front - dFz_long - dFz_lat_front; 
+  fz_fr = Fz_static_front - dFz_long + dFz_lat_front; 
   
-  fz_rl = Fz_static_rear  + dFz_long + dFz_lat_rear;
-  fz_rr = Fz_static_rear  + dFz_long - dFz_lat_rear;
+  fz_rl = Fz_static_rear  + dFz_long - dFz_lat_rear;
+  fz_rr = Fz_static_rear  + dFz_long + dFz_lat_rear;
 
   if (fz_fl < 10.0) fz_fl = 10.0;
   if (fz_fr < 10.0) fz_fr = 10.0;
