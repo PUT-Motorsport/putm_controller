@@ -297,31 +297,39 @@ void Controller::control_loop() {
 
     auto velocity_front_left_error = velocity_set - (speed_fl * 2 * 3.1415 * 0.198 / (60 * 11) );
     integral_front_left += velocity_front_left_error;
-    tau_final[0] = 130;//K_sc * velocity_front_left_error + K_integral_sc * integral_front_left;
+    tau_final[0] = 110;//K_sc * velocity_front_left_error + K_integral_sc * integral_front_left;
     RCLCPP_INFO(this->get_logger(), "TAU_FINAL[0]: '%f'", tau_final[0]);
 
     auto velocity_front_right_error = velocity_set - (speed_fr * 2 * 3.1415 * 0.198 / (60 * 11) );
     integral_front_right += velocity_front_right_error;
-    tau_final[1] = 100;// K_sc * velocity_front_right_error+ K_integral_sc * integral_front_right;
+    tau_final[1] = 50;// K_sc * velocity_front_right_error+ K_integral_sc * integral_front_right;
 
 
     auto velocity_rear_left_error = velocity_set - (speed_rl * 2 * 3.1415 * 0.198 / (60 * 11) );
     integral_rear_left += velocity_rear_left_error;
-    tau_final[2] = 70;//K_sc * velocity_rear_left_error+ K_integral_sc * integral_rear_left;
+    tau_final[2] = 50;//K_sc * velocity_rear_left_error+ K_integral_sc * integral_rear_left;
 
     auto velocity_rear_right_error = velocity_set - (speed_rr * 2 * 3.1415 * 0.198 / (60 * 11) );
     integral_rear_right += velocity_rear_right_error;
-    tau_final[3] = 70;//K_sc * velocity_rear_right_error+ K_integral_sc * integral_rear_right;
+    tau_final[3] = 50;//K_sc * velocity_rear_right_error+ K_integral_sc * integral_rear_right;
     
     
   //}
 
-  if (pedal < 0.1) {
+  if (pedal < 0.05|| (pedal > 0.3 && pedal <= 0.7)) {
     tau_final[0] = 0.0;
     tau_final[1] = 0.0;
     tau_final[2] = 0.0;
     tau_final[3] = 0.0;
   }
+  // if (pedal > 0.7){
+  //   tau_final[0] = 110.0;
+  //   tau_final[1] = 110.0;
+  //   tau_final[2] = 110.0;
+  //   tau_final[3] = 110.0;
+
+  // }
+
 
 
   setpoints.front_left.torque = convert_torque(tau_final[0]);
