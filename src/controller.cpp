@@ -7,6 +7,16 @@
 #include "putm_vcl_interfaces/msg/yaw_ref.hpp"
 #include "geometry_msgs/msg/vector3_stamped.hpp"
 #include <Eigen/Dense>
+#include <cmath>
+#include <algorithm>
+constexpr double TAU_MIN = 0.0;
+constexpr double TAU_MAX = 150.0; // dostosuj do realnego limitu tau_final
+
+
+
+constexpr double WHEEL_RADIUS = 0.198;
+constexpr double GEAR_RATIO = 11.0;
+constexpr double RPM_TO_MPS = 2.0 * M_PI * WHEEL_RADIUS / (60.0 * GEAR_RATIO);
 
 // #include "putm_vcl_interfaces/msg/xsens_acceleration.hpp"
 // #include "putm_vcl_interfaces/msg/xsens_rate_of_turn.hpp"
@@ -263,9 +273,21 @@ void Controller::control_loop() {
   convert_steering_angle(steering_angle_deg, delta_l_rad, delta_r_rad);
   
 
-  // double K_sc = 40.0;
-  double K_sc =35.0;
-  double K_integral_sc = 0.005;
+  // pi settings
+  double Kpro_fr = 174.14;
+  double Kpro_fl = 203.53;
+  double Kpro_rr = 139.0;
+  double Kpro_rl = 59.26;
+
+  double Kint_fr = 540.79;
+  double Kint_fl = 278.43;
+  double Kint_rr = 430.35;
+  double Kint_rl = 85.01;
+
+
+
+
+  double refresh_rate = 0.01; // refresh rate of controller.cpp in [ms]
 
   double vx_est = 1.0;
   double vy_est = 0.0;
@@ -274,68 +296,63 @@ void Controller::control_loop() {
   double yaw_rate_ref = referenceYawRate(vx_est, delta_avg_rad * 180.0 / M_PI);
   double fz_fl = 0.0, fz_fr = 0.0, fz_rl = 0.0, fz_rr = 0.0;
   calculate_load_transfer(ax, ay, fz_fl, fz_fr, fz_rl, fz_rr);
-/*
-  // Low speed mode z manualnym sterowaniem momentem
-  if (vx_est < 2.5 || pedal < 0.8) {
-
-    double manual_torque = pedal * CAP_MOMENT / 4.0;
-
-    tau_final[0] = manual_torque;
-    tau_final[1] = manual_torque;
-    tau_final[2] = manual_torque;
-    tau_final[3] = manual_torque;
-
-    prev_tau_nmpc[0] = manual_torque;
-    prev_tau_nmpc[1] = manual_torque;
-    prev_tau_nmpc[2] = manual_torque;
-    prev_tau_nmpc[3] = manual_torque;
-
-    is_initialized = false;
-  }
-  else {  */
-    auto velocity_set = 3.5; // optimal speed vlocity
-
-    auto velocity_front_left_error = velocity_set - (speed_fl * 2 * 3.1415 * 0.198 / (60 * 11) );
-    integral_front_left += velocity_front_left_error;
-    tau_final[0] = 110;//K_sc * velocity_front_left_error + K_integral_sc * integral_front_left;
-    RCLCPP_INFO(this->get_logger(), "TAU_FINAL[0]: '%f'", tau_final[0]);
-
-    auto velocity_front_right_error = velocity_set - (speed_fr * 2 * 3.1415 * 0.198 / (60 * 11) );
-    integral_front_right += velocity_front_right_error;
-    tau_final[1] = 50;// K_sc * velocity_front_right_error+ K_integral_sc * integral_front_right;
 
 
-    auto velocity_rear_left_error = velocity_set - (speed_rl * 2 * 3.1415 * 0.198 / (60 * 11) );
-    integral_rear_left += velocity_rear_left_error;
-    tau_final[2] = 50;//K_sc * velocity_rear_left_error+ K_integral_sc * integral_rear_left;
 
-    auto velocity_rear_right_error = velocity_set - (speed_rr * 2 * 3.1415 * 0.198 / (60 * 11) );
-    integral_rear_right += velocity_rear_right_error;
-    tau_final[3] = 50;//K_sc * velocity_rear_right_error+ K_integral_sc * integral_rear_right;
-    
-    
-  //}
-
-  if (pedal < 0.05|| (pedal > 0.3 && pedal <= 0.7)) {
     tau_final[0] = 0.0;
     tau_final[1] = 0.0;
     tau_final[2] = 0.0;
     tau_final[3] = 0.0;
+
+  if(pedal > 0.05){ // regulator PI
+    auto velocity_set = 0.5; // velocity in [m/s]
+
+    auto velocity_front_left_error = velocity_set - (speed_fl * RPM_TO_MPS);
+    tau_final[0] = Kpro_fl * velocity_front_left_error + Kint_fl * integral_front_left;
+    bool sat_fl = (tau_final[0] >= TAU_MAX && velocity_front_left_error > 0) ||
+                  (tau_final[0] <= TAU_MIN && velocity_front_left_error < 0);
+    if (!sat_fl) {
+        integral_front_left += velocity_front_left_error * refresh_rate;
+        tau_final[0] = Kpro_fl * velocity_front_left_error + Kint_fl * integral_front_left;
+    }
+    tau_final[0] = std::clamp(tau_final[0], TAU_MIN, TAU_MAX);
+
+    auto velocity_front_right_error = velocity_set - (speed_fr * RPM_TO_MPS);
+    tau_final[1] = Kpro_fr * velocity_front_right_error + Kint_fr * integral_front_right;
+    bool sat_fr = (tau_final[1] >= TAU_MAX && velocity_front_right_error > 0) ||
+                  (tau_final[1] <= TAU_MIN && velocity_front_right_error < 0);
+    if (!sat_fr) {
+        integral_front_right += velocity_front_right_error * refresh_rate;
+        tau_final[1] = Kpro_fr * velocity_front_right_error + Kint_fr * integral_front_right;
+    }
+    tau_final[1] = std::clamp(tau_final[1], TAU_MIN, TAU_MAX);
+
+    auto velocity_rear_left_error = velocity_set - (speed_rl * RPM_TO_MPS);
+    tau_final[2] = Kpro_rl * velocity_rear_left_error + Kint_rl * integral_rear_left;
+    bool sat_rl = (tau_final[2] >= TAU_MAX && velocity_rear_left_error > 0) ||
+                  (tau_final[2] <= TAU_MIN && velocity_rear_left_error < 0);
+    if (!sat_rl) {
+        integral_rear_left += velocity_rear_left_error * refresh_rate;
+        tau_final[2] = Kpro_rl * velocity_rear_left_error + Kint_rl * integral_rear_left;
+    }
+    tau_final[2] = std::clamp(tau_final[2], TAU_MIN, TAU_MAX);
+
+    auto velocity_rear_right_error = velocity_set - (speed_rr * RPM_TO_MPS);
+    tau_final[3] = Kpro_rr * velocity_rear_right_error + Kint_rr * integral_rear_right;
+    bool sat_rr = (tau_final[3] >= TAU_MAX && velocity_rear_right_error > 0) ||
+                  (tau_final[3] <= TAU_MIN && velocity_rear_right_error < 0);
+    if (!sat_rr) {
+        integral_rear_right += velocity_rear_right_error * refresh_rate;
+        tau_final[3] = Kpro_rr * velocity_rear_right_error + Kint_rr * integral_rear_right;
+    }
+    tau_final[3] = std::clamp(tau_final[3], TAU_MIN, TAU_MAX);
+    
   }
-  // if (pedal > 0.7){
-  //   tau_final[0] = 110.0;
-  //   tau_final[1] = 110.0;
-  //   tau_final[2] = 110.0;
-  //   tau_final[3] = 110.0;
 
-  // }
-
-
-
-  setpoints.front_left.torque = convert_torque(tau_final[0]);
-  setpoints.front_right.torque = convert_torque(tau_final[1]);
-  setpoints.rear_left.torque = convert_torque(tau_final[2]);
-  setpoints.rear_right.torque = convert_torque(tau_final[3]);
+  setpoints.front_left.torque = tau_final[0];
+  setpoints.front_right.torque = tau_final[1];
+  setpoints.rear_left.torque = tau_final[2];
+  setpoints.rear_right.torque = tau_final[3];
   setpoints_publisher->publish(setpoints);
 }
 
