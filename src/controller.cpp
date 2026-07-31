@@ -107,7 +107,7 @@ class Controller : public rclcpp::Node {
   // Parametry TC
   const double R_e = 0.193;
 
-  const double kappa_limit = 1.10;
+  const double kappa_limit = 1.05;
 
   // EKF
   Eigen::Vector2d ekf_x;
@@ -403,10 +403,10 @@ void Controller::control_loop() {
   yaw_ref.fz_rr = fz_rr;
   yaw_rate_ref_publisher->publish(yaw_ref);
 
-  setpoints.front_left.torque = convert_torque(tau_final[1]);
-  setpoints.front_right.torque = convert_torque(tau_final[0]);
-  setpoints.rear_left.torque = convert_torque(tau_final[3]);
-  setpoints.rear_right.torque = convert_torque(tau_final[2]);
+  setpoints.front_left.torque = convert_torque(tau_final[0]);
+  setpoints.front_right.torque = convert_torque(tau_final[1]);
+  setpoints.rear_left.torque = convert_torque(tau_final[2]);
+  setpoints.rear_right.torque = convert_torque(tau_final[3]);
   setpoints_publisher->publish(setpoints);
 }
 
