@@ -92,9 +92,9 @@ class Controller : public rclcpp::Node {
   double blend_alpha = 0.0;
 
   static constexpr double SPEED_WARMUP     = 1.0;
-  static constexpr double SPEED_ENTER_NMPC = 2.0;
+  static constexpr double SPEED_ENTER_NMPC = 2.5;
   static constexpr double SPEED_EXIT_NMPC  = 1.5;
-  static constexpr double BLEND_DURATION_S = 0.2;
+  static constexpr double BLEND_DURATION_S = 0.5;
 
   // Wskaźniki i bufory ACADOS
   tv_nmpc_solver_capsule *acados_capsule;
@@ -126,6 +126,17 @@ class Controller : public rclcpp::Node {
   Eigen::Matrix2d ekf_I;
 
   inline void estimate_velocity_ekf(double ax, double ay, double r, double w_fl, double w_fr, double w_rl, double w_rr, double delta_l, double delta_r, double &vx_est, double &vy_est);
+
+  inline const char* controlModeToString(ControlMode mode) {
+  switch (mode) {
+    case ControlMode::MANUAL:    return "MANUAL";
+    case ControlMode::WARMUP:    return "WARMUP";
+    case ControlMode::BLEND_IN:  return "BLEND_IN";
+    case ControlMode::NMPC:      return "NMPC";
+    case ControlMode::BLEND_OUT: return "BLEND_OUT";
+    default:                     return "UNKNOWN";
+  }
+}
 
   void frontbox_driver_input_topic_callback(const FrontboxDriverInput msg);
   void steering_wheel_callback(const SteeringWheel::SharedPtr msg);
@@ -258,7 +269,7 @@ void Controller::control_loop() {
   auto start_time = std::chrono::high_resolution_clock::now();
 
   double pedal = convert_pedal_position(frontbox_driver_input.pedal_position);
-  double steering_angle_deg = steering_wheel.steering_wheel_position * -1;
+  double steering_angle_deg = (steering_wheel.steering_wheel_position/135 * 90) * -1;
 
   double w_fl = convert_wheel_speed(speed_fl);
   double w_fr = convert_wheel_speed(speed_fr);
@@ -278,6 +289,8 @@ void Controller::control_loop() {
   calculate_load_transfer(ax, ay, fz_fl, fz_fr, fz_rl, fz_rr);
 
   double manual_torque = pedal * CAP_MOMENT;
+
+  ControlMode prev_mode = control_mode;
 
   switch (control_mode) {
     case ControlMode::MANUAL:
@@ -300,6 +313,13 @@ void Controller::control_loop() {
       if (blend_alpha <= 0.0) { blend_alpha = 0.0; control_mode = ControlMode::WARMUP; }
       if (vx_est >= SPEED_ENTER_NMPC) control_mode = ControlMode::BLEND_IN;
       break;
+  }
+
+  if (control_mode != prev_mode) {
+    RCLCPP_INFO(this->get_logger(),
+        "State machine: %s -> %s | vx_est=%.2f blend_alpha=%.2f",
+        controlModeToString(prev_mode), controlModeToString(control_mode),
+        vx_est, blend_alpha);
   }
 
   bool solver_active = (control_mode != ControlMode::MANUAL);
