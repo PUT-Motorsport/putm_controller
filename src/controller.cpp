@@ -13,7 +13,7 @@
 // #include "putm_vcl_interfaces/msg/xsens_rate_of_turn.hpp"
 // #include "vectornav_msgs/msg/imu_group.hpp"
 
-constexpr double MAX_MOMENT = 4 * 9.8 * 11;
+constexpr double MAX_MOMENT = 4 * 13 * 11;
 constexpr double CAP_MOMENT = 143;
 constexpr double Ku = 1.0/50.0;
 constexpr bool enable_tc = true;
@@ -89,6 +89,16 @@ class Controller : public rclcpp::Node {
   const double a1 = -1.69972730;
   const double a2 = 0.73926403;
 
+  // MPC State Machine
+  enum class ControlMode { MANUAL, WARMUP, BLEND_IN, NMPC, BLEND_OUT };
+  ControlMode control_mode = ControlMode::MANUAL;
+  double blend_alpha = 0.0;
+
+  static constexpr double SPEED_WARMUP     = 1.0;
+  static constexpr double SPEED_ENTER_NMPC = 2.5;
+  static constexpr double SPEED_EXIT_NMPC  = 1.5;
+  static constexpr double BLEND_DURATION_S = 0.5;
+
   // Wskaźniki i bufory ACADOS
   tv_nmpc_solver_capsule *acados_capsule;
   ocp_nlp_config *nlp_config;
@@ -119,6 +129,17 @@ class Controller : public rclcpp::Node {
   Eigen::Matrix2d ekf_I;
 
   inline void estimate_velocity_ekf(double ax, double ay, double r, double w_fl, double w_fr, double w_rl, double w_rr, double delta_l, double delta_r, double &vx_est, double &vy_est);
+
+  inline const char* controlModeToString(ControlMode mode) {
+  switch (mode) {
+    case ControlMode::MANUAL:    return "MANUAL";
+    case ControlMode::WARMUP:    return "WARMUP";
+    case ControlMode::BLEND_IN:  return "BLEND_IN";
+    case ControlMode::NMPC:      return "NMPC";
+    case ControlMode::BLEND_OUT: return "BLEND_OUT";
+    default:                     return "UNKNOWN";
+  }
+}
 
   void frontbox_driver_input_topic_callback(const FrontboxDriverInput msg);
   void steering_wheel_callback(const SteeringWheel::SharedPtr msg);
@@ -256,7 +277,7 @@ void Controller::control_loop() {
   auto start_time = std::chrono::high_resolution_clock::now();
 
   double pedal = convert_pedal_position(frontbox_driver_input.pedal_position);
-  double steering_angle_deg = steering_wheel.steering_wheel_position * -1;
+  double steering_angle_deg = (steering_wheel.steering_wheel_position/135 * 90) * -1;
 
   double w_fl = convert_wheel_speed(speed_fl);
   double w_fr = convert_wheel_speed(speed_fr);
@@ -275,10 +296,44 @@ void Controller::control_loop() {
   double fz_fl = 0.0, fz_fr = 0.0, fz_rl = 0.0, fz_rr = 0.0;
   calculate_load_transfer(ax, ay, fz_fl, fz_fr, fz_rl, fz_rr);
 
-  // Low speed mode z manualnym sterowaniem momentem
-  if (vx_est < 3.0) {
+  double manual_torque = pedal * CAP_MOMENT;
 
-    double manual_torque = pedal * CAP_MOMENT / 4.0;
+  ControlMode prev_mode = control_mode;
+
+  switch (control_mode) {
+    case ControlMode::MANUAL:
+      if (vx_est >= SPEED_WARMUP) control_mode = ControlMode::WARMUP;
+      break;
+    case ControlMode::WARMUP:
+      if (vx_est < SPEED_WARMUP) { control_mode = ControlMode::MANUAL; is_initialized = false; }
+      else if (vx_est >= SPEED_ENTER_NMPC) { control_mode = ControlMode::BLEND_IN; }
+      break;
+    case ControlMode::BLEND_IN:
+      blend_alpha += dt / BLEND_DURATION_S;
+      if (blend_alpha >= 1.0) { blend_alpha = 1.0; control_mode = ControlMode::NMPC; }
+      if (vx_est < SPEED_EXIT_NMPC) control_mode = ControlMode::BLEND_OUT;
+      break;
+    case ControlMode::NMPC:
+      if (vx_est < SPEED_EXIT_NMPC) control_mode = ControlMode::BLEND_OUT;
+      break;
+    case ControlMode::BLEND_OUT:
+      blend_alpha -= dt / BLEND_DURATION_S;
+      if (blend_alpha <= 0.0) { blend_alpha = 0.0; control_mode = ControlMode::WARMUP; }
+      if (vx_est >= SPEED_ENTER_NMPC) control_mode = ControlMode::BLEND_IN;
+      break;
+  }
+
+  if (control_mode != prev_mode) {
+    RCLCPP_INFO(this->get_logger(),
+        "State machine: %s -> %s | vx_est=%.2f blend_alpha=%.2f",
+        controlModeToString(prev_mode), controlModeToString(control_mode),
+        vx_est, blend_alpha);
+  }
+
+  bool solver_active = (control_mode != ControlMode::MANUAL);
+
+  // Low speed mode z manualnym sterowaniem momentem
+  if (!solver_active) {
 
     tau_final[0] = manual_torque;
     tau_final[1] = manual_torque;
@@ -294,7 +349,7 @@ void Controller::control_loop() {
   }
   else {
 
-    double t_ref = pedal * CAP_MOMENT; 
+    double t_ref = manual_torque * 4; 
 
     p_val[0] = yaw_rate_ref; 
     p_val[1] = delta_l_rad;
@@ -367,27 +422,20 @@ void Controller::control_loop() {
       double w_actual[4] = {w_fl, w_fr, w_rl, w_rr};
       
       for (int i = 0; i < 4; i++) {
-        if (enable_tc && pedal > 0.05) { 
-          
+          double blended = (1.0 - blend_alpha) * manual_torque + blend_alpha * prev_tau_nmpc[i];
+
           double max_safe_v_wheel = (vx_est * kappa_limit);
-          double current_v_wheel = w_actual[i] * R_e;
-
-          double dynamic_max_torque = CAP_MOMENT;
-
-          if (current_v_wheel > max_safe_v_wheel) {
-              double speed_excess = current_v_wheel - max_safe_v_wheel;
-              
-              double damping_factor = 80.0; 
-              
-              dynamic_max_torque = CAP_MOMENT - (speed_excess * damping_factor);
-              
-              if (dynamic_max_torque < 0.0) dynamic_max_torque = 0.0;
+          if (enable_tc && pedal > 0.05) {
+              double current_v_wheel = w_actual[i] * R_e;
+              double dynamic_max_torque = CAP_MOMENT;
+              if (current_v_wheel > max_safe_v_wheel) {
+                  double speed_excess = current_v_wheel - max_safe_v_wheel;
+                  dynamic_max_torque = std::max(0.0, CAP_MOMENT - speed_excess * 80.0);
+              }
+              tau_final[i] = std::clamp(blended, 0.0, dynamic_max_torque);
+          } else {
+              tau_final[i] = std::clamp(blended, 0.0, CAP_MOMENT);
           }
-          tau_final[i] = std::clamp(prev_tau_nmpc[i], 0.0, dynamic_max_torque);
-          
-        } else {
-          tau_final[i] = std::clamp(prev_tau_nmpc[i], 0.0, CAP_MOMENT);
-        }
       }
     }
   }
@@ -471,17 +519,13 @@ inline void Controller::convert_steering_angle(double steering_wheel_deg, double
   
   double S_abs = std::abs(steering_wheel_deg);
   
-  // Zawsze liczymy bezwzględny kąt na podstawie wielomianów
   double inner_wheel = 0.000410 * S_abs * S_abs + 0.2554 * S_abs;
   double outer_wheel = -0.0000942 * S_abs * S_abs + 0.2543 * S_abs;
 
   if (steering_wheel_deg >= 0.0) {
-    // LEWO (Dodatnie) -> Lewe koło jest wewnętrzne
     delta_l_rad = inner_wheel;
     delta_r_rad = outer_wheel;
   } else {
-    // PRAWO (Ujemne) -> Prawe koło jest wewnętrzne
-    // UWAGA: Kąty muszą być ujemne dla skrętu w prawo!
     delta_l_rad = -outer_wheel;
     delta_r_rad = -inner_wheel;
   }
@@ -508,11 +552,11 @@ inline void Controller::calculate_load_transfer(double ax_sensor, double ay_sens
   double dFz_lat_front = (m * h * ay_sensor * b) / (2.0 * L * c);
   double dFz_lat_rear  = (m * h * ay_sensor * a) / (2.0 * L * c);
 
-  fz_fl = Fz_static_front - dFz_long + dFz_lat_front; 
-  fz_fr = Fz_static_front - dFz_long - dFz_lat_front; 
+  fz_fl = Fz_static_front - dFz_long - dFz_lat_front; 
+  fz_fr = Fz_static_front - dFz_long + dFz_lat_front; 
   
-  fz_rl = Fz_static_rear  + dFz_long + dFz_lat_rear;
-  fz_rr = Fz_static_rear  + dFz_long - dFz_lat_rear;
+  fz_rl = Fz_static_rear  + dFz_long - dFz_lat_rear;
+  fz_rr = Fz_static_rear  + dFz_long + dFz_lat_rear;
 
   if (fz_fl < 10.0) fz_fl = 10.0;
   if (fz_fr < 10.0) fz_fr = 10.0;
