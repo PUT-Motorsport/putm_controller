@@ -12,8 +12,8 @@
 // #include "putm_vcl_interfaces/msg/xsens_rate_of_turn.hpp"
 // #include "vectornav_msgs/msg/imu_group.hpp"
 
-constexpr double MAX_MOMENT = 4 * 13 * 11;
-constexpr double CAP_MOMENT = 143;
+constexpr double MAX_MOMENT = 108;
+constexpr double CAP_MOMENT = 108;
 constexpr double Ku = 1.0/50.0;
 constexpr bool enable_tc = true;
 
@@ -91,10 +91,10 @@ class Controller : public rclcpp::Node {
   ControlMode control_mode = ControlMode::MANUAL;
   double blend_alpha = 0.0;
 
-  static constexpr double SPEED_WARMUP     = 1.0;
-  static constexpr double SPEED_ENTER_NMPC = 2.5;
-  static constexpr double SPEED_EXIT_NMPC  = 1.5;
-  static constexpr double BLEND_DURATION_S = 0.5;
+  static constexpr double SPEED_WARMUP     = 2.0;
+  static constexpr double SPEED_ENTER_NMPC = 3.0;
+  static constexpr double SPEED_EXIT_NMPC  = 2.0;
+  static constexpr double BLEND_DURATION_S = 1.0;
 
   // Wskaźniki i bufory ACADOS
   tv_nmpc_solver_capsule *acados_capsule;
@@ -269,7 +269,7 @@ void Controller::control_loop() {
   auto start_time = std::chrono::high_resolution_clock::now();
 
   double pedal = convert_pedal_position(frontbox_driver_input.pedal_position);
-  double steering_angle_deg = (steering_wheel.steering_wheel_position/135 * 90) * -1;
+  double steering_angle_deg = ((double)steering_wheel.steering_wheel_position /135 * 50) * -1;
 
   double w_fl = convert_wheel_speed(speed_fl);
   double w_fr = convert_wheel_speed(speed_fr);
@@ -284,11 +284,11 @@ void Controller::control_loop() {
   double vy_est = 0.0;
   estimate_velocity_ekf(ax, ay, yaw_rate, w_fl, w_fr, w_rl, w_rr, delta_l_rad, delta_r_rad, vx_est, vy_est);
   double delta_avg_rad = (delta_l_rad + delta_r_rad) / 2.0;
-  double yaw_rate_ref = referenceYawRate(vx_est, delta_avg_rad * 180.0 / M_PI);
+  double yaw_rate_ref = yaw_rate > 0 ? yaw_rate + 0.2 : yaw_rate - 0.2;//referenceYawRate(vx_est, delta_avg_rad * 180.0 / M_PI);
   double fz_fl = 0.0, fz_fr = 0.0, fz_rl = 0.0, fz_rr = 0.0;
   calculate_load_transfer(ax, ay, fz_fl, fz_fr, fz_rl, fz_rr);
 
-  double manual_torque = pedal * CAP_MOMENT;
+  double manual_torque = pedal * MAX_MOMENT;
 
   ControlMode prev_mode = control_mode;
 
@@ -419,14 +419,14 @@ void Controller::control_loop() {
           double max_safe_v_wheel = (vx_est * kappa_limit);
           if (enable_tc && pedal > 0.05) {
               double current_v_wheel = w_actual[i] * R_e;
-              double dynamic_max_torque = CAP_MOMENT;
+              double dynamic_max_torque = MAX_MOMENT;
               if (current_v_wheel > max_safe_v_wheel) {
                   double speed_excess = current_v_wheel - max_safe_v_wheel;
-                  dynamic_max_torque = std::max(0.0, CAP_MOMENT - speed_excess * 80.0);
+                  dynamic_max_torque = std::max(0.0, MAX_MOMENT - speed_excess * 80.0);
               }
               tau_final[i] = std::clamp(blended, 0.0, dynamic_max_torque);
           } else {
-              tau_final[i] = std::clamp(blended, 0.0, CAP_MOMENT);
+              tau_final[i] = std::clamp(blended, 0.0, MAX_MOMENT);
           }
       }
     }
@@ -534,7 +534,7 @@ inline void Controller::calculate_load_transfer(double ax_sensor, double ay_sens
 
 inline int32_t Controller::convert_torque(double torque) {
   static constexpr double TORQUE_SCALER = 1000.0;
-  return (int32_t)((torque / 108.0) * TORQUE_SCALER);
+  return (int32_t)((torque / CAP_MOMENT) * TORQUE_SCALER);
 }
 
 inline void Controller::estimate_velocity_ekf(double ax, double ay, double r, double w_fl, double w_fr, double w_rl, double w_rr, double delta_l, double delta_r, double &vx_est, double &vy_est) {
@@ -542,8 +542,7 @@ inline void Controller::estimate_velocity_ekf(double ax, double ay, double r, do
     const double c   = 0.621;
     const double b   = 0.765;
 
-    // Parametry 
-    const double q_vx      = 0.206283;
+    const double q_vx      = 5.50;
     const double q_vy      = 0.00010;
     const double r_wheels  = 0.005777;
     const double r_yaw     = 0.007262;
@@ -555,11 +554,13 @@ inline void Controller::estimate_velocity_ekf(double ax, double ay, double r, do
          0.0,  q_vy;
 
     double delta = (delta_l + delta_r) / 2.0;
+    double ax_safe = std::clamp(ax, -18.0, 18.0);
+    double ay_safe = std::clamp(ay, -20.0, 20.0);
 
     // PREDYKCJA
     Eigen::Vector2d x_pred;
-    x_pred(0) = ekf_x(0) + (ax + ekf_x(1) * r) * dt;
-    x_pred(1) = ekf_x(1) + (ay - ekf_x(0) * r) * dt;
+    x_pred(0) = ekf_x(0) + (ax_safe + ekf_x(1) * r) * dt;
+    x_pred(1) = ekf_x(1) + (ay_safe - ekf_x(0) * r) * dt;
 
     Eigen::Matrix2d F;
     F << 1.0,      r * dt,
@@ -601,16 +602,25 @@ inline void Controller::estimate_velocity_ekf(double ax, double ay, double r, do
         z_full(4)   = 0.0;
         R_adaptive  = Eigen::Matrix<double, 5, 5>::Identity() * 1e-4;
     } else {
-        // Koła: twarde odcięcie przy poślizgu > 50%
+        int wheels_slipping = 0;
+        
         for (int i = 0; i < 4; i++) {
             double slip = 0.0;
             if (x_pred(0) > 1.0) {
                 slip = std::abs(y_wheels(i)) / x_pred(0);
             }
-            if (slip > 0.5) {
-                R_adaptive(i, i) = 1e6;
+            
+            if (slip > 0.4) {
+                wheels_slipping++;
+                R_adaptive(i, i) = 5.0; 
             } else {
-                R_adaptive(i, i) = r_wheels + std::abs(ax) * ax_pen;
+                R_adaptive(i, i) = r_wheels + std::abs(ax_safe) * ax_pen;
+            }
+        }
+
+        if (wheels_slipping >= 3) {
+            for (int i = 0; i < 4; i++) {
+                R_adaptive(i, i) = 1.0;
             }
         }
 
@@ -620,13 +630,12 @@ inline void Controller::estimate_velocity_ekf(double ax, double ay, double r, do
             R_adaptive(4, 4) = r_zlvu;
         } else {
             z_full(4)    = r * b;
-            R_adaptive(4, 4) = r_yaw + std::abs(ay) * 0.2;
+            R_adaptive(4, 4) = r_yaw + std::abs(ay_safe) * 0.2;
         }
     }
 
     // KOREKCJA
     Eigen::Matrix<double, 5, 1> y = z_full - z_pred_full;
-
     Eigen::Matrix<double, 5, 5> S = H * P_pred * H.transpose() + R_adaptive;
     Eigen::Matrix<double, 2, 5> K = P_pred * H.transpose() * S.inverse();
 
